@@ -42,15 +42,21 @@ def _wait_for_load():
 
 def _load_sync():
     global _tokenizer, _translator, _ready, _loading, _error
+    do_load = False
 
     with _lock:
         if _ready:
             return
         if _loading:
-            _wait_for_load()
-            return
-        _loading = True
-        _error = None
+            pass
+        else:
+            _loading = True
+            _error = None
+            do_load = True
+
+    if not do_load:
+        _wait_for_load()
+        return
 
     try:
         _download_model()
@@ -58,7 +64,7 @@ def _load_sync():
         from transformers import AutoTokenizer
 
         path = model_dir()
-        tok = AutoTokenizer.from_pretrained(path)
+        tok = AutoTokenizer.from_pretrained(path, fix_mistral_regex=True)
         tr = ctranslate2.Translator(
             path,
             device='cpu',

@@ -31,7 +31,7 @@ DEFAULTS = {
     # Engine (gemini_api = Google AI Studio API key)
     'engine':       'google',       # google | local_nllb | gcp_local | gemini_api | gemini_oauth
     'gemini_api_key': '',           # https://aistudio.google.com/apikey
-    'gemini_model':   'gemini-2.5-flash',
+    'gemini_model':   'gemini-2.5-flash-lite',
     'gemini_model_auto': True,
 
     # GCP Cloud Run local NLLB translator
@@ -181,8 +181,8 @@ def save(updates=None):
         return cfg
 
 
-def get(key):
-    return load().get(key, DEFAULTS.get(key))
+def get(key, default=None):
+    return load().get(key, DEFAULTS.get(key, default))
 
 
 def set_(key, value):

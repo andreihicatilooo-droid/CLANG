@@ -6,7 +6,7 @@ import urllib.request
 
 AI_STUDIO_API_BASE = 'https://generativelanguage.googleapis.com/v1beta'
 AI_STUDIO_KEY_URL = 'https://aistudio.google.com/apikey'
-FALLBACK_MODEL = 'gemini-2.5-flash'
+FALLBACK_MODEL = 'gemini-2.5-flash-lite'
 _MODEL_CACHE_TTL_SEC = 300
 
 _model_cache = {'api_key': '', 'expires_at': 0.0, 'payload': None}
@@ -28,7 +28,7 @@ def _is_vision_model(model_id):
 
 
 def pick_recommended_model(models):
-    """Pick the best Gemini model for screen translation (vision + speed)."""
+    """Pick the fastest Gemini model suitable for screen translation (vision)."""
     candidates = [m for m in models if _is_vision_model(m.get('id', ''))]
     if not candidates:
         candidates = list(models)
@@ -38,18 +38,20 @@ def pick_recommended_model(models):
     def score(entry):
         model_id = entry.get('id', '').lower()
         points = 0
-        if 'flash' in model_id and 'lite' not in model_id:
+        if 'flash-lite' in model_id or ('flash' in model_id and 'lite' in model_id):
+            points += 200
+        elif 'lite' in model_id:
+            points += 180
+        elif 'flash' in model_id:
             points += 120
         if 'pro' in model_id:
-            points += 70
+            points -= 80
         if '2.5' in model_id:
             points += 40
         elif '2.0' in model_id:
             points += 25
         elif '1.5' in model_id:
             points += 10
-        if 'lite' in model_id:
-            points -= 25
         if 'preview' in model_id or '-exp' in model_id:
             points -= 15
         return points
@@ -158,7 +160,7 @@ def scan_ai_studio(api_key, current_model=None, model_auto=True):
         'selected': selected,
         'message': (
             f'Найдено моделей: {len(listed["models"])}. '
-            f'Рекомендуется: {recommended}'
+            f'Самая быстрая: {recommended}'
         ),
     }
 

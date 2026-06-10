@@ -145,7 +145,7 @@ def _translate_gemini_vision_api(pil_image, target, with_original):
 
     model = api_validation.resolve_gemini_model()
     if not model:
-        model = 'gemini-2.5-flash'
+        model = 'gemini-2.5-flash-lite'
     url = (f'https://generativelanguage.googleapis.com/v1beta/'
            f'models/{model}:generateContent?key={api_key}')
 
@@ -181,7 +181,7 @@ def _get_oauth_token():
 
 def _translate_gemini_vision_oauth(pil_image, target, with_original):
     token = _get_oauth_token()
-    model = config.get('gemini_model') or 'gemini-2.5-flash'
+    model = api_validation.resolve_gemini_model() or 'gemini-2.5-flash-lite'
     url = (f'https://generativelanguage.googleapis.com/v1beta/'
            f'models/{model}:generateContent')
 

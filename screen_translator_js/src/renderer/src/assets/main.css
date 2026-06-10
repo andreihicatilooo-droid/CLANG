@@ -199,11 +199,32 @@ code {
   -webkit-app-region: drag;
 }
 
-.overlay-canvas {
+.overlay-root {
   position: fixed;
   inset: 0;
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.overlay-root #root,
+body:has(.overlay-root) #root {
+  display: block !important;
+  margin: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  align-items: stretch !important;
+  justify-content: flex-start !important;
+}
+
+.overlay-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
   pointer-events: none;
 }

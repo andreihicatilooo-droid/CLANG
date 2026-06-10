@@ -26,26 +26,28 @@ export default function OverlayScreen(): React.JSX.Element {
     // #endregion
 
     const onData = (_event: unknown, data: { blocks: OverlayBlock[] }): void => {
+      const firstText = data.blocks?.[0]?.text?.slice(0, 80) ?? ''
       // #region agent log
       window.electron.ipcRenderer.send('debug-log', {
         location: 'OverlayScreen.tsx:onData',
         message: 'overlay-data received',
-        data: { blockCount: data.blocks?.length ?? 0 },
-        hypothesisId: 'A'
+        data: { blockCount: data.blocks?.length ?? 0, textPreview: firstText },
+        hypothesisId: 'F'
       })
       // #endregion
-      setVisible(false)
       setBlocks(data.blocks)
-      requestAnimationFrame(() => setVisible(true))
+      setVisible(true)
     }
 
     window.electron.ipcRenderer.on('overlay-data', onData)
+    window.electron.ipcRenderer.send('overlay-ready')
     return () => {
       window.electron.ipcRenderer.removeListener('overlay-data', onData)
     }
   }, [])
 
   return (
+    <div className="overlay-root">
     <div className="overlay-canvas">
       {blocks.map((block, index) => (
         <div
@@ -65,6 +67,7 @@ export default function OverlayScreen(): React.JSX.Element {
           {block.text}
         </div>
       ))}
+    </div>
     </div>
   )
 }

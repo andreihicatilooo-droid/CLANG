@@ -1,3 +1,4 @@
+import { appendFileSync } from 'fs'
 import { app, BrowserWindow, ipcMain, screen, Tray, Menu, globalShortcut } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -8,8 +9,10 @@ import Tesseract from 'tesseract.js'
 import { translate } from '@vitalets/google-translate-api'
 import {
   buildErrorBlock,
+  buildFullRegionBlock,
   buildOverlayBlocks,
   extractOcrLines,
+  scaleBlocksToDip,
   type OverlayBlock
 } from './overlayHelpers'
 
@@ -21,28 +24,37 @@ let overlayWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let overlayDismissRegistered = false
 let overlayCloseTimer: ReturnType<typeof setTimeout> | null = null
+let overlayPayload: { blocks: OverlayBlock[]; width: number; height: number } | null = null
 
 const OVERLAY_AUTO_CLOSE_MS = 30_000
+const DEBUG_LOG_PATH = join(__dirname, '../../../debug-3dad4a.log')
 
 // #region agent log
 function debugLog(
   location: string,
   message: string,
   data: Record<string, unknown>,
-  hypothesisId: string
+  hypothesisId: string,
+  runId = 'post-fix'
 ): void {
+  const entry = {
+    sessionId: '3dad4a',
+    runId,
+    hypothesisId,
+    location,
+    message,
+    data,
+    timestamp: Date.now()
+  }
+  try {
+    appendFileSync(DEBUG_LOG_PATH, `${JSON.stringify(entry)}\n`)
+  } catch {
+    /* ignore */
+  }
   fetch('http://127.0.0.1:7386/ingest/9a727f05-8ed1-4b84-8329-9c0d9f893225', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '3dad4a' },
-    body: JSON.stringify({
-      sessionId: '3dad4a',
-      runId: 'pre-fix',
-      hypothesisId,
-      location,
-      message,
-      data,
-      timestamp: Date.now()
-    })
+    body: JSON.stringify(entry)
   }).catch(() => {})
 }
 // #endregion
@@ -152,11 +164,26 @@ function closeOverlay(): void {
     clearTimeout(overlayCloseTimer)
     overlayCloseTimer = null
   }
+  overlayPayload = null
   unregisterOverlayDismiss()
   if (overlayWindow) {
     overlayWindow.close()
     overlayWindow = null
   }
+}
+
+function deliverOverlayData(): void {
+  if (!overlayWindow || !overlayPayload) return
+  // #region agent log
+  debugLog('index.ts:deliverOverlayData', 'overlay-data IPC send', {
+    blockCount: overlayPayload.blocks.length,
+    width: overlayPayload.width,
+    height: overlayPayload.height,
+    textPreview: overlayPayload.blocks[0]?.text?.slice(0, 80) ?? ''
+  }, 'A')
+  // #endregion
+  overlayWindow.webContents.send('overlay-data', overlayPayload)
+  overlayWindow.showInactive()
 }
 
 function showOverlay(
@@ -175,6 +202,7 @@ function showOverlay(
     height,
     frame: false,
     transparent: true,
+    backgroundColor: '#00000000',
     alwaysOnTop: true,
     skipTaskbar: true,
     hasShadow: false,
@@ -188,27 +216,13 @@ function showOverlay(
   })
 
   overlayWindow.setIgnoreMouseEvents(true, { forward: true })
-
-  const sendData = (): void => {
-    // #region agent log
-    debugLog('index.ts:sendData', 'overlay-data IPC send', {
-      blockCount: blocks.length,
-      width,
-      height,
-      screenX,
-      screenY
-    }, 'A')
-    // #endregion
-    overlayWindow?.webContents.send('overlay-data', { blocks, width, height })
-    overlayWindow?.showInactive()
-  }
+  overlayPayload = { blocks, width, height }
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     overlayWindow.loadURL(process.env['ELECTRON_RENDERER_URL'] + '#/overlay')
   } else {
     overlayWindow.loadFile(join(__dirname, '../renderer/index.html'), { hash: 'overlay' })
   }
-  overlayWindow.webContents.once('did-finish-load', sendData)
 
   overlayWindow.on('closed', () => {
     overlayWindow = null
@@ -250,6 +264,13 @@ app.whenReady().then(() => {
 
   ipcMain.on('close-overlay', () => {
     closeOverlay()
+  })
+
+  ipcMain.on('overlay-ready', () => {
+    // #region agent log
+    debugLog('index.ts:overlay-ready', 'renderer ready handshake', {}, 'A')
+    // #endregion
+    deliverOverlayData()
   })
 
   // #region agent log
@@ -298,10 +319,22 @@ app.whenReady().then(() => {
       }, 'D')
       // #endregion
 
-      image.crop(x, y, width, height)
+      const scaleFactor = primaryDisplay.scaleFactor
+      const cropX = Math.round(x * scaleFactor)
+      const cropY = Math.round(y * scaleFactor)
+      const cropW = Math.round(width * scaleFactor)
+      const cropH = Math.round(height * scaleFactor)
+
+      image.crop(cropX, cropY, cropW, cropH)
       const croppedBuffer = await image.getBufferAsync(Jimp.MIME_PNG)
 
-      const { data } = await Tesseract.recognize(croppedBuffer, 'eng')
+      const worker = await Tesseract.createWorker('eng')
+      let data
+      try {
+        ;({ data } = await worker.recognize(croppedBuffer, {}, { text: true, blocks: true }))
+      } finally {
+        await worker.terminate()
+      }
       const lines = extractOcrLines(data)
       const trimmedText = data.text.trim()
 
@@ -309,11 +342,13 @@ app.whenReady().then(() => {
       debugLog('index.ts:process-region', 'OCR done', {
         trimmedLen: trimmedText.length,
         lineCount: lines.length,
-        textPreview: trimmedText.slice(0, 80)
+        blockCount: data.blocks?.length ?? 0,
+        textPreview: trimmedText.slice(0, 80),
+        scaleFactor
       }, 'B')
       // #endregion
 
-      if (!trimmedText || lines.length === 0) {
+      if (!trimmedText) {
         showOverlay(
           screenX,
           screenY,
@@ -333,7 +368,11 @@ app.whenReady().then(() => {
       }, 'C')
       // #endregion
 
-      const blocks = buildOverlayBlocks(lines, res.text, image)
+      let blocks =
+        lines.length > 0
+          ? buildOverlayBlocks(lines, res.text, image)
+          : buildFullRegionBlock(cropW, cropH, res.text, image)
+      blocks = scaleBlocksToDip(blocks, scaleFactor)
 
       // #region agent log
       debugLog('index.ts:process-region', 'blocks built', { blockCount: blocks.length }, 'E')

@@ -20,10 +20,14 @@ export interface OverlayBlock {
 }
 
 interface TesseractBbox {
-  x0: number
-  y0: number
-  x1: number
-  y1: number
+  x0?: number
+  y0?: number
+  x1?: number
+  y1?: number
+  left?: number
+  top?: number
+  width?: number
+  height?: number
 }
 
 interface TesseractLine {
@@ -45,13 +49,38 @@ interface TesseractPage {
   lines?: TesseractLine[]
 }
 
+function normalizeBbox(bbox: TesseractBbox): { x: number; y: number; w: number; h: number } | null {
+  if (
+    bbox.x0 != null &&
+    bbox.y0 != null &&
+    bbox.x1 != null &&
+    bbox.y1 != null
+  ) {
+    const w = bbox.x1 - bbox.x0
+    const h = bbox.y1 - bbox.y0
+    return w >= 2 && h >= 2 ? { x: bbox.x0, y: bbox.y0, w, h } : null
+  }
+
+  if (
+    bbox.left != null &&
+    bbox.top != null &&
+    bbox.width != null &&
+    bbox.height != null &&
+    bbox.width >= 2 &&
+    bbox.height >= 2
+  ) {
+    return { x: bbox.left, y: bbox.top, w: bbox.width, h: bbox.height }
+  }
+
+  return null
+}
+
 function lineFromBbox(text: string, bbox: TesseractBbox): OcrLine | null {
   const trimmed = text.trim()
   if (!trimmed) return null
-  const w = bbox.x1 - bbox.x0
-  const h = bbox.y1 - bbox.y0
-  if (w < 2 || h < 2) return null
-  return { text: trimmed, x: bbox.x0, y: bbox.y0, w, h }
+  const box = normalizeBbox(bbox)
+  if (!box) return null
+  return { text: trimmed, ...box }
 }
 
 export function extractOcrLines(page: TesseractPage): OcrLine[] {
@@ -178,6 +207,42 @@ export function buildOverlayBlocks(
         fontSize
       }
     })
+}
+
+export function buildFullRegionBlock(
+  width: number,
+  height: number,
+  text: string,
+  image: Jimp
+): OverlayBlock[] {
+  const bg = sampleBgColor(image, 0, 0, width, height)
+  const fontSize = fitFontSize(text, width, height)
+
+  return [
+    {
+      x: 0,
+      y: 0,
+      w: width,
+      h: height,
+      text,
+      bgColor: `rgba(${bg.r}, ${bg.g}, ${bg.b}, 0.96)`,
+      textColor: contrastTextColor(bg.r, bg.g, bg.b),
+      fontSize
+    }
+  ]
+}
+
+export function scaleBlocksToDip(blocks: OverlayBlock[], scaleFactor: number): OverlayBlock[] {
+  if (scaleFactor <= 1) return blocks
+
+  return blocks.map((block) => ({
+    ...block,
+    x: Math.round(block.x / scaleFactor),
+    y: Math.round(block.y / scaleFactor),
+    w: Math.round(block.w / scaleFactor),
+    h: Math.round(block.h / scaleFactor),
+    fontSize: Math.max(9, Math.round(block.fontSize / scaleFactor))
+  }))
 }
 
 export function buildErrorBlock(width: number, height: number, message: string): OverlayBlock[] {

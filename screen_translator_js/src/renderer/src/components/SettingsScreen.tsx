@@ -88,9 +88,16 @@ export default function SettingsScreen() {
                 <div className="flex justify-between items-center">
                   <div>
                     <span className="block text-sm font-medium text-slate-300">Захват экрана</span>
-                    <span className="text-xs text-slate-500">Выделить область для перевода</span>
+                    <span className="text-xs text-slate-500">Выделить область — перевод появится прямо на экране</span>
                   </div>
                   <kbd className="px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-md text-slate-300 font-mono text-sm">Ctrl + Shift + E</kbd>
+                </div>
+                <div className="flex justify-between items-center">
+                  <div>
+                    <span className="block text-sm font-medium text-slate-300">Закрыть оверлей</span>
+                    <span className="text-xs text-slate-500">Убрать перевод с экрана</span>
+                  </div>
+                  <kbd className="px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-md text-slate-300 font-mono text-sm">Esc</kbd>
                 </div>
               </div>
             </div>

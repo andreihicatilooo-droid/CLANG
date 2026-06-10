@@ -1,7 +1,7 @@
 import { HashRouter, Routes, Route } from 'react-router-dom'
 import SettingsScreen from './components/SettingsScreen'
 import CaptureScreen from './components/CaptureScreen'
-import ResultScreen from './components/ResultScreen'
+import OverlayScreen from './components/OverlayScreen'
 
 function App(): React.JSX.Element {
   return (
@@ -9,7 +9,7 @@ function App(): React.JSX.Element {
       <Routes>
         <Route path="/" element={<SettingsScreen />} />
         <Route path="/capture" element={<CaptureScreen />} />
-        <Route path="/result" element={<ResultScreen />} />
+        <Route path="/overlay" element={<OverlayScreen />} />
       </Routes>
     </HashRouter>
   )

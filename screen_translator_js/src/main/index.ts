@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain, screen, Tray, Menu, globalShortcut } from 'electron'
+import { app, BrowserWindow, ipcMain, screen, Tray, Menu, globalShortcut } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -6,11 +6,23 @@ import screenshot from 'screenshot-desktop'
 import Jimp from 'jimp'
 import Tesseract from 'tesseract.js'
 import { translate } from '@vitalets/google-translate-api'
+import {
+  buildErrorBlock,
+  buildOverlayBlocks,
+  extractOcrLines,
+  type OverlayBlock
+} from './overlayHelpers'
+
+let isQuitting = false
 
 let mainWindow: BrowserWindow | null = null
 let captureWindow: BrowserWindow | null = null
-let resultWindow: BrowserWindow | null = null
+let overlayWindow: BrowserWindow | null = null
 let tray: Tray | null = null
+let overlayDismissRegistered = false
+let overlayCloseTimer: ReturnType<typeof setTimeout> | null = null
+
+const OVERLAY_AUTO_CLOSE_MS = 30_000
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -27,7 +39,7 @@ function createWindow(): void {
 
   mainWindow.on('ready-to-show', () => mainWindow?.show())
   mainWindow.on('close', (event) => {
-    if (!app.isQuitting) {
+    if (!isQuitting) {
       event.preventDefault()
       mainWindow?.hide()
     }
@@ -40,34 +52,43 @@ function createWindow(): void {
   }
 }
 
-function createTray() {
+function createTray(): void {
   tray = new Tray(icon)
   const contextMenu = Menu.buildFromTemplate([
     { label: 'Settings', click: () => mainWindow?.show() },
-    { label: 'Capture Screen', accelerator: 'CommandOrControl+Shift+E', click: () => openCaptureWindow() },
+    {
+      label: 'Capture Screen',
+      accelerator: 'CommandOrControl+Shift+E',
+      click: () => openCaptureWindow()
+    },
     { type: 'separator' },
-    { label: 'Quit', click: () => {
-      app.isQuitting = true
-      app.quit()
-    }}
+    {
+      label: 'Quit',
+      click: () => {
+        isQuitting = true
+        app.quit()
+      }
+    }
   ])
   tray.setToolTip('Screen Translator')
   tray.setContextMenu(contextMenu)
   tray.on('click', () => mainWindow?.show())
 }
 
-function openCaptureWindow() {
+function openCaptureWindow(): void {
   if (captureWindow) {
     captureWindow.show()
     return
   }
 
-  const displays = screen.getAllDisplays()
   const primaryDisplay = screen.getPrimaryDisplay()
   const { width, height, x, y } = primaryDisplay.bounds
 
   captureWindow = new BrowserWindow({
-    width, height, x, y,
+    width,
+    height,
+    x,
+    y,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -86,42 +107,96 @@ function openCaptureWindow() {
     captureWindow.loadFile(join(__dirname, '../renderer/index.html'), { hash: 'capture' })
   }
 
-  captureWindow.on('closed', () => captureWindow = null)
+  captureWindow.on('closed', () => {
+    captureWindow = null
+  })
 }
 
-function openResultWindow(x: number, y: number) {
-  if (resultWindow) {
-    resultWindow.setBounds({ x, y, width: 350, height: 250 })
-    resultWindow.show()
-    return
-  }
+function registerOverlayDismiss(): void {
+  if (overlayDismissRegistered) return
+  globalShortcut.register('Escape', () => closeOverlay())
+  overlayDismissRegistered = true
+}
 
-  resultWindow = new BrowserWindow({
-    width: 350,
-    height: 250,
-    x, y,
+function unregisterOverlayDismiss(): void {
+  if (!overlayDismissRegistered) return
+  globalShortcut.unregister('Escape')
+  overlayDismissRegistered = false
+}
+
+function closeOverlay(): void {
+  if (overlayCloseTimer) {
+    clearTimeout(overlayCloseTimer)
+    overlayCloseTimer = null
+  }
+  unregisterOverlayDismiss()
+  if (overlayWindow) {
+    overlayWindow.close()
+    overlayWindow = null
+  }
+}
+
+function showOverlay(
+  screenX: number,
+  screenY: number,
+  width: number,
+  height: number,
+  blocks: OverlayBlock[]
+): void {
+  closeOverlay()
+
+  overlayWindow = new BrowserWindow({
+    x: screenX,
+    y: screenY,
+    width,
+    height,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
     skipTaskbar: true,
-    resizable: true,
+    hasShadow: false,
+    resizable: false,
+    focusable: false,
+    show: false,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false
     }
   })
 
-  resultWindow.on('blur', () => {
-    resultWindow?.close()
-  })
+  overlayWindow.setIgnoreMouseEvents(true, { forward: true })
 
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    resultWindow.loadURL(process.env['ELECTRON_RENDERER_URL'] + '#/result')
-  } else {
-    resultWindow.loadFile(join(__dirname, '../renderer/index.html'), { hash: 'result' })
+  const sendData = (): void => {
+    overlayWindow?.webContents.send('overlay-data', { blocks, width, height })
+    overlayWindow?.showInactive()
   }
 
-  resultWindow.on('closed', () => resultWindow = null)
+  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    overlayWindow.loadURL(process.env['ELECTRON_RENDERER_URL'] + '#/overlay')
+  } else {
+    overlayWindow.loadFile(join(__dirname, '../renderer/index.html'), { hash: 'overlay' })
+  }
+  overlayWindow.webContents.once('did-finish-load', sendData)
+
+  overlayWindow.on('closed', () => {
+    overlayWindow = null
+    unregisterOverlayDismiss()
+    if (overlayCloseTimer) {
+      clearTimeout(overlayCloseTimer)
+      overlayCloseTimer = null
+    }
+  })
+
+  registerOverlayDismiss()
+  overlayCloseTimer = setTimeout(() => closeOverlay(), OVERLAY_AUTO_CLOSE_MS)
+}
+
+function regionToScreen(x: number, y: number): { screenX: number; screenY: number } {
+  const primaryDisplay = screen.getPrimaryDisplay()
+  return {
+    screenX: primaryDisplay.bounds.x + x,
+    screenY: primaryDisplay.bounds.y + y
+  }
 }
 
 app.whenReady().then(() => {
@@ -141,38 +216,48 @@ app.whenReady().then(() => {
     if (captureWindow) captureWindow.close()
   })
 
+  ipcMain.on('close-overlay', () => {
+    closeOverlay()
+  })
+
   ipcMain.on('process-region', async (_event, { x, y, width, height }) => {
     if (captureWindow) captureWindow.close()
 
-    const resultX = x
-    const resultY = y + height + 10
-    openResultWindow(resultX, resultY)
-    resultWindow?.webContents.send('translation-loading')
+    const { screenX, screenY } = regionToScreen(x, y)
 
     try {
       const imgBuffer = await screenshot()
-      
       const image = await Jimp.read(imgBuffer)
       image.crop(x, y, width, height)
       const croppedBuffer = await image.getBufferAsync(Jimp.MIME_PNG)
 
-      const { data: { text } } = await Tesseract.recognize(croppedBuffer, 'eng')
+      const { data } = await Tesseract.recognize(croppedBuffer, 'eng')
+      const lines = extractOcrLines(data)
+      const trimmedText = data.text.trim()
 
-      const trimmedText = text.trim()
-      if (!trimmedText) {
-        resultWindow?.webContents.send('translation-result', { error: 'No text detected in this area.' })
+      if (!trimmedText || lines.length === 0) {
+        showOverlay(
+          screenX,
+          screenY,
+          width,
+          height,
+          buildErrorBlock(width, height, 'Текст не найден в этой области')
+        )
         return
       }
 
       const res = await translate(trimmedText, { to: 'ru' })
-
-      resultWindow?.webContents.send('translation-result', {
-        original: trimmedText,
-        translated: res.text
-      })
+      const blocks = buildOverlayBlocks(lines, res.text, image)
+      showOverlay(screenX, screenY, width, height, blocks)
     } catch (err) {
       console.error(err)
-      resultWindow?.webContents.send('translation-result', { error: 'Failed to translate: ' + String(err) })
+      showOverlay(
+        screenX,
+        screenY,
+        width,
+        height,
+        buildErrorBlock(width, height, 'Ошибка перевода')
+      )
     }
   })
 
@@ -187,3 +272,6 @@ app.on('window-all-closed', () => {
   }
 })
 
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll()
+})

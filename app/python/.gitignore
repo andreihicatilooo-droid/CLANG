@@ -2,6 +2,7 @@
 build/
 dist/
 *.spec
+!build_backend.spec
 
 # Python
 __pycache__/

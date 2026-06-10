@@ -1,0 +1,79 @@
+/**
+ * Screen Translator — design tokens extracted from Tailwind usage
+ * Source: SettingsScreen.tsx, CaptureScreen.tsx, main.css
+ */
+:root {
+  /* Slate palette */
+  --color-slate-950: #020617;
+  --color-slate-900: #0f172a;
+  --color-slate-800: #1e293b;
+  --color-slate-700: #334155;
+  --color-slate-600: #475569;
+  --color-slate-500: #64748b;
+  --color-slate-400: #94a3b8;
+  --color-slate-300: #cbd5e1;
+  --color-slate-200: #e2e8f0;
+  --color-slate-100: #f1f5f9;
+
+  /* Blue accent */
+  --color-blue-900: #1e3a8a;
+  --color-blue-500: #3b82f6;
+  --color-blue-400: #60a5fa;
+
+  /* Alpha variants */
+  --color-blue-900-50: rgba(30, 58, 138, 0.5);
+  --color-blue-500-20: rgba(59, 130, 246, 0.2);
+  --color-black-10: rgba(0, 0, 0, 0.1);
+  --color-gray-900-80: rgba(17, 24, 39, 0.8);
+
+  /* Semantic aliases */
+  --bg-app: var(--color-slate-900);
+  --bg-sidebar: var(--color-slate-950);
+  --bg-card: var(--color-slate-800);
+  --bg-input: var(--color-slate-900);
+  --bg-nav-active: var(--color-blue-900-50);
+
+  --border-default: var(--color-slate-800);
+  --border-card: var(--color-slate-700);
+
+  --text-primary: var(--color-slate-100);
+  --text-body: var(--color-slate-200);
+  --text-label: var(--color-slate-300);
+  --text-muted: var(--color-slate-500);
+  --text-nav: var(--color-slate-400);
+  --text-nav-active: var(--color-blue-400);
+  --text-accent: var(--color-blue-500);
+
+  /* Typography */
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+
+  --text-xs: 0.75rem;    /* 12px */
+  --text-sm: 0.875rem;   /* 14px */
+  --text-base: 1rem;     /* 16px */
+  --text-xl: 1.25rem;    /* 20px */
+  --text-2xl: 1.5rem;    /* 24px */
+
+  --font-medium: 500;
+  --font-semibold: 600;
+  --font-bold: 700;
+
+  /* Spacing */
+  --sidebar-width: 256px;
+  --content-padding: 32px;
+  --card-padding: 24px;
+  --card-radius: 8px;
+  --input-radius: 6px;
+  --nav-item-radius: 6px;
+
+  /* Focus ring */
+  --ring-blue-500: 0 0 0 2px var(--color-blue-500);
+
+  /* Scrollbar */
+  --scrollbar-thumb: var(--color-slate-700);
+  --scrollbar-thumb-hover: var(--color-slate-600);
+
+  /* Window chrome */
+  --window-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  --window-radius: 10px;
+}

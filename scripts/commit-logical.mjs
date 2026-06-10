@@ -80,7 +80,7 @@ const STAGE_GROUPS = {
     label: 'Документация',
     type: 'docs',
     scope: null,
-    match: (p) => p === 'README.md'
+    match: (p) => p === 'README.md' || p.startsWith('docs/')
   },
   scripts: {
     label: 'Скрипты сборки',
@@ -103,13 +103,14 @@ function run(cmd, opts = {}) {
   return execSync(cmd, { cwd: ROOT, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], ...opts }).trim()
 }
 
-function runGit(args) {
+function runGit(args, { raw = false } = {}) {
   const r = spawnSync('git', args, { cwd: ROOT, encoding: 'utf8' })
   if (r.status !== 0) {
     const err = (r.stderr || r.stdout || '').trim()
     throw new Error(`git ${args.join(' ')} failed: ${err}`)
   }
-  return (r.stdout || '').trim()
+  // raw: не обрезать вывод — porcelain-строки начинаются со значимого пробела
+  return raw ? (r.stdout || '') : (r.stdout || '').trim()
 }
 
 function parseArgs(argv) {
@@ -133,7 +134,9 @@ function isExcluded(path) {
 function listChangedFiles() {
   const files = new Set()
 
-  const porcelain = runGit(['status', '--porcelain']).split('\n').filter(Boolean)
+  const porcelain = runGit(['status', '--porcelain'], { raw: true })
+    .split('\n')
+    .filter((line) => line.trim().length > 0)
   for (const line of porcelain) {
     const path = line.slice(3).trim().replace(/\\/g, '/')
     if (path.includes(' -> ')) {

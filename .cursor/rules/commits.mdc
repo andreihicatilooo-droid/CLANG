@@ -1,0 +1,27 @@
+---
+description: Автоматические логические коммиты на русском после этапов CERBER
+alwaysApply: true
+---
+
+# Автофиксация коммитов
+
+После этапов разработки **создавай логические коммиты** на русском языке.
+
+## Триггеры
+
+- Hook `subagentStop` после: `electron-dev`, `python-backend`, `planner`, `debugger`, `verifier`
+- Hook `stop` — финальный `node scripts/commit-logical.mjs --all` для остатка
+- Skill `/staged-commits`
+
+## Алгоритм
+
+1. Определи этап и область файлов
+2. Запусти `node scripts/commit-logical.mjs --stage <этап> --summary "<суть на русском>"`
+3. Или `--all` для разбиения всех незакоммиченных изменений
+4. Проверь журнал `.cursor/commit-journal.jsonl`
+
+## Формат сообщений
+
+`тип(область): описание на русском`
+
+Не смешивай Electron и Python в одном коммите. Не пушь без запроса пользователя.

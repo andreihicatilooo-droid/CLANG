@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "hooks": {
+    "subagentStop": [
+      {
+        "command": "node .cursor/hooks/on-subagent-stop.mjs",
+        "matcher": "electron-dev|python-backend|planner|debugger|verifier",
+        "loop_limit": 8
+      }
+    ],
+    "stop": [
+      {
+        "command": "node .cursor/hooks/on-agent-stop.mjs",
+        "loop_limit": 3
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "node .cursor/hooks/after-task-commit-hint.mjs",
+        "matcher": "Task"
+      }
+    ]
+  }
+}

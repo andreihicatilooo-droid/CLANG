@@ -1,0 +1,6 @@
+﻿# Local Python environments
+venv/
+.venv/
+
+# Editor / tooling (optional local)
+.claude/

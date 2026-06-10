@@ -73,7 +73,7 @@ export const CONFIG_DEFAULTS: ScreenTranslatorConfig = {
 
   engine: 'google',
   gemini_api_key: '',
-  gemini_model: 'gemini-2.5-flash',
+  gemini_model: 'gemini-2.5-flash-lite',
   gemini_model_auto: true,
   gcp_local_url: '',
   gcp_local_api_key: '',
@@ -126,9 +126,9 @@ export const ENGINES: { id: ScreenTranslatorConfig['engine']; label: string; hin
 ]
 
 export const GEMINI_MODELS = [
+  'gemini-2.5-flash-lite',
   'gemini-2.5-flash',
   'gemini-2.5-pro',
-  'gemini-2.5-flash-lite',
   'gemini-2.0-flash',
   'gemini-1.5-flash'
 ]

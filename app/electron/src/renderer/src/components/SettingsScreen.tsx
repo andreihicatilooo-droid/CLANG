@@ -558,7 +558,7 @@ export default function SettingsScreen(): React.JSX.Element {
                     </div>
 
                     <Md3Switch
-                      label="Автовыбор модели (рекомендуется для перевода с экрана)"
+                      label="Автовыбор самой быстрой модели"
                       checked={draft.gemini_model_auto}
                       onChange={(value) => {
                         updateDraft({
@@ -608,7 +608,7 @@ export default function SettingsScreen(): React.JSX.Element {
                       <p className="md3-hint">
                         {draft.gemini_model_auto
                           ? 'Модель определяется автоматически при каждом переводе (кэш 5 мин)'
-                          : `Рекомендуется: ${recommendedModel || 'сканируйте ключ'}. ★ — лучший выбор для vision`}
+                          : `Самая быстрая: ${recommendedModel || 'сканируйте ключ'}. ★ — быстрый выбор для vision`}
                       </p>
                     </div>
                   </div>
@@ -946,8 +946,8 @@ export default function SettingsScreen(): React.JSX.Element {
                   <label className="md3-label">Размер шрифта ({draft.overlay_font_size})</label>
                   <input
                     type="range"
-                      min={11}
-                      max={28}
+                    min={11}
+                    max={28}
                     step={1}
                     value={draft.overlay_font_size}
                     onChange={(e) => updateDraft({ overlay_font_size: Number(e.target.value) })}

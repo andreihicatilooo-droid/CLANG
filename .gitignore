@@ -1,12 +1,25 @@
 ﻿# Local Python environments
 venv/
 .venv/
+**/__pycache__/
+*.pyc
+*.pyo
+
+# Python build artifacts
+app/python/build/
+app/python/dist/
+
+# Node / Electron
+app/electron/node_modules/
+app/electron/dist/
+app/electron/out/
+.eslintcache
 
 # Editor / tooling (optional local)
 .claude/
 
-# Local backup of former nested screen_translator .git
-.screen_translator_git_backup/
-
 # Editor backup files
 *.bak
+
+# Logs
+*.log

@@ -24,6 +24,29 @@ let overlayCloseTimer: ReturnType<typeof setTimeout> | null = null
 
 const OVERLAY_AUTO_CLOSE_MS = 30_000
 
+// #region agent log
+function debugLog(
+  location: string,
+  message: string,
+  data: Record<string, unknown>,
+  hypothesisId: string
+): void {
+  fetch('http://127.0.0.1:7386/ingest/9a727f05-8ed1-4b84-8329-9c0d9f893225', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '3dad4a' },
+    body: JSON.stringify({
+      sessionId: '3dad4a',
+      runId: 'pre-fix',
+      hypothesisId,
+      location,
+      message,
+      data,
+      timestamp: Date.now()
+    })
+  }).catch(() => {})
+}
+// #endregion
+
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 900,
@@ -167,6 +190,15 @@ function showOverlay(
   overlayWindow.setIgnoreMouseEvents(true, { forward: true })
 
   const sendData = (): void => {
+    // #region agent log
+    debugLog('index.ts:sendData', 'overlay-data IPC send', {
+      blockCount: blocks.length,
+      width,
+      height,
+      screenX,
+      screenY
+    }, 'A')
+    // #endregion
     overlayWindow?.webContents.send('overlay-data', { blocks, width, height })
     overlayWindow?.showInactive()
   }
@@ -220,20 +252,66 @@ app.whenReady().then(() => {
     closeOverlay()
   })
 
+  // #region agent log
+  ipcMain.on('debug-log', (_event, payload: {
+    location: string
+    message: string
+    data: Record<string, unknown>
+    hypothesisId: string
+  }) => {
+    debugLog(payload.location, payload.message, payload.data, payload.hypothesisId)
+  })
+  // #endregion
+
   ipcMain.on('process-region', async (_event, { x, y, width, height }) => {
     if (captureWindow) captureWindow.close()
 
     const { screenX, screenY } = regionToScreen(x, y)
+    const primaryDisplay = screen.getPrimaryDisplay()
+
+    // #region agent log
+    debugLog('index.ts:process-region', 'region received', {
+      x,
+      y,
+      width,
+      height,
+      screenX,
+      screenY,
+      scaleFactor: primaryDisplay.scaleFactor,
+      displayBounds: primaryDisplay.bounds,
+      displaySize: primaryDisplay.size
+    }, 'D')
+    // #endregion
 
     try {
       const imgBuffer = await screenshot()
       const image = await Jimp.read(imgBuffer)
+
+      // #region agent log
+      debugLog('index.ts:process-region', 'screenshot loaded', {
+        imgW: image.bitmap.width,
+        imgH: image.bitmap.height,
+        cropX: x,
+        cropY: y,
+        cropW: width,
+        cropH: height
+      }, 'D')
+      // #endregion
+
       image.crop(x, y, width, height)
       const croppedBuffer = await image.getBufferAsync(Jimp.MIME_PNG)
 
       const { data } = await Tesseract.recognize(croppedBuffer, 'eng')
       const lines = extractOcrLines(data)
       const trimmedText = data.text.trim()
+
+      // #region agent log
+      debugLog('index.ts:process-region', 'OCR done', {
+        trimmedLen: trimmedText.length,
+        lineCount: lines.length,
+        textPreview: trimmedText.slice(0, 80)
+      }, 'B')
+      // #endregion
 
       if (!trimmedText || lines.length === 0) {
         showOverlay(
@@ -247,9 +325,27 @@ app.whenReady().then(() => {
       }
 
       const res = await translate(trimmedText, { to: 'ru' })
+
+      // #region agent log
+      debugLog('index.ts:process-region', 'translate done', {
+        translatedLen: res.text.length,
+        translatedPreview: res.text.slice(0, 80)
+      }, 'C')
+      // #endregion
+
       const blocks = buildOverlayBlocks(lines, res.text, image)
+
+      // #region agent log
+      debugLog('index.ts:process-region', 'blocks built', { blockCount: blocks.length }, 'E')
+      // #endregion
+
       showOverlay(screenX, screenY, width, height, blocks)
     } catch (err) {
+      // #region agent log
+      debugLog('index.ts:process-region', 'pipeline error', {
+        error: err instanceof Error ? err.message : String(err)
+      }, 'C')
+      // #endregion
       console.error(err)
       showOverlay(
         screenX,

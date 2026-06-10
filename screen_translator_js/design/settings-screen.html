@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Экранный Переводчик — Настройки</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="design-tokens.css" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #0c1222 0%, #1a1f35 50%, #0f172a 100%);
+      font-family: var(--font-sans);
+      -webkit-font-smoothing: antialiased;
+      padding: 32px;
+    }
+
+    /* Desktop window frame */
+    .app-window {
+      width: 1024px;
+      height: 640px;
+      border-radius: var(--window-radius);
+      overflow: hidden;
+      box-shadow: var(--window-shadow);
+      display: flex;
+      flex-direction: column;
+      border: 1px solid var(--color-slate-700);
+    }
+
+    .titlebar {
+      height: 36px;
+      background: var(--color-slate-950);
+      border-bottom: 1px solid var(--color-slate-800);
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      flex-shrink: 0;
+      -webkit-app-region: drag;
+      user-select: none;
+    }
+
+    .titlebar-controls {
+      display: flex;
+      gap: 8px;
+      margin-right: 12px;
+    }
+
+    .titlebar-btn {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      border: none;
+    }
+    .titlebar-btn.close { background: #ff5f57; }
+    .titlebar-btn.minimize { background: #febc2e; }
+    .titlebar-btn.maximize { background: #28c840; }
+
+    .titlebar-title {
+      font-size: 12px;
+      color: var(--color-slate-400);
+      font-weight: var(--font-medium);
+    }
+
+    /* App layout */
+    .app-body {
+      flex: 1;
+      display: flex;
+      background: var(--bg-app);
+      color: var(--text-body);
+      overflow: hidden;
+    }
+
+    /* Sidebar */
+    .sidebar {
+      width: var(--sidebar-width);
+      background: var(--bg-sidebar);
+      border-right: 1px solid var(--border-default);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+    }
+
+    .sidebar-header {
+      padding: 24px;
+    }
+
+    .sidebar-logo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: var(--text-xl);
+      font-weight: var(--font-bold);
+      color: var(--text-primary);
+    }
+
+    .sidebar-logo svg {
+      width: 24px;
+      height: 24px;
+      color: var(--text-accent);
+      flex-shrink: 0;
+    }
+
+    .sidebar-nav {
+      flex: 1;
+      padding: 0 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .nav-item {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 12px;
+      border-radius: var(--nav-item-radius);
+      border: none;
+      background: transparent;
+      color: var(--text-nav);
+      font-family: var(--font-sans);
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      cursor: pointer;
+      transition: background 150ms, color 150ms;
+      text-align: left;
+    }
+
+    .nav-item svg {
+      width: 20px;
+      height: 20px;
+      flex-shrink: 0;
+    }
+
+    .nav-item:hover {
+      background: var(--color-slate-800);
+      color: var(--text-body);
+    }
+
+    .nav-item.active {
+      background: var(--bg-nav-active);
+      color: var(--text-nav-active);
+    }
+
+    /* Main content */
+    .main-content {
+      flex: 1;
+      padding: var(--content-padding);
+      overflow: auto;
+    }
+
+    .main-content::-webkit-scrollbar { width: 6px; }
+    .main-content::-webkit-scrollbar-track { background: transparent; }
+    .main-content::-webkit-scrollbar-thumb {
+      background: var(--scrollbar-thumb);
+      border-radius: 10px;
+    }
+    .main-content::-webkit-scrollbar-thumb:hover {
+      background: var(--scrollbar-thumb-hover);
+    }
+
+    .content-inner {
+      max-width: 672px;
+    }
+
+    .page-title {
+      font-size: var(--text-2xl);
+      font-weight: var(--font-semibold);
+      color: var(--text-primary);
+      margin-bottom: 24px;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-card);
+      border-radius: var(--card-radius);
+      padding: var(--card-padding);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    }
+
+    .card-spaced > * + * { margin-top: 24px; }
+
+    .form-group label {
+      display: block;
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      color: var(--text-label);
+      margin-bottom: 4px;
+    }
+
+    .form-group select {
+      width: 100%;
+      background: var(--bg-input);
+      border: 1px solid var(--border-card);
+      color: var(--text-body);
+      border-radius: var(--input-radius);
+      padding: 8px 12px;
+      font-family: var(--font-sans);
+      font-size: var(--text-sm);
+      outline: none;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      padding-right: 36px;
+      cursor: pointer;
+    }
+
+    .form-group select:focus {
+      box-shadow: var(--ring-blue-500);
+    }
+
+    .form-hint {
+      margin-top: 4px;
+      font-size: var(--text-sm);
+      color: var(--text-muted);
+    }
+
+    .card-divider {
+      padding-top: 16px;
+      border-top: 1px solid var(--border-card);
+    }
+
+    /* Hotkeys tab */
+    .hotkey-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .hotkey-row + .hotkey-row { margin-top: 16px; }
+
+    .hotkey-label {
+      display: block;
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      color: var(--text-label);
+    }
+
+    .hotkey-desc {
+      font-size: var(--text-xs);
+      color: var(--text-muted);
+    }
+
+    kbd {
+      padding: 6px 12px;
+      background: var(--bg-input);
+      border: 1px solid var(--border-card);
+      border-radius: var(--input-radius);
+      color: var(--text-label);
+      font-family: var(--font-mono);
+      font-size: var(--text-sm);
+    }
+
+    /* History tab */
+    .empty-state {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: var(--text-sm);
+    }
+
+    /* General tab */
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      cursor: pointer;
+    }
+
+    .checkbox-row input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      border-radius: 4px;
+      background: var(--bg-input);
+      border: 1px solid var(--border-card);
+      accent-color: var(--color-blue-500);
+      cursor: pointer;
+    }
+
+    .checkbox-row span {
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      color: var(--text-label);
+    }
+
+    /* Tab panels */
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* Design note footer */
+    .design-note {
+      position: fixed;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 11px;
+      color: var(--color-slate-500);
+      background: rgba(15, 23, 42, 0.8);
+      padding: 6px 14px;
+      border-radius: 20px;
+      border: 1px solid var(--color-slate-700);
+      backdrop-filter: blur(8px);
+    }
+  </style>
+</head>
+<body>
+  <div class="app-window">
+    <div class="titlebar">
+      <div class="titlebar-controls">
+        <button class="titlebar-btn close" aria-label="Close"></button>
+        <button class="titlebar-btn minimize" aria-label="Minimize"></button>
+        <button class="titlebar-btn maximize" aria-label="Maximize"></button>
+      </div>
+      <span class="titlebar-title">Экранный Переводчик</span>
+    </div>
+
+    <div class="app-body">
+      <!-- Sidebar -->
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <div class="sidebar-logo">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
+            Экранный Переводчик
+          </div>
+        </div>
+        <nav class="sidebar-nav">
+          <button class="nav-item active" data-tab="languages">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+            Языки
+          </button>
+          <button class="nav-item" data-tab="hotkeys">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 8h.01"/><path d="M12 12h.01"/><path d="M14 8h.01"/><path d="M16 12h.01"/><path d="M18 8h.01"/><path d="M6 8h.01"/><path d="M7 16h10"/><path d="M8 12h.01"/><rect width="20" height="16" x="2" y="4" rx="2"/></svg>
+            Горячие клавиши
+          </button>
+          <button class="nav-item" data-tab="history">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
+            История
+          </button>
+          <button class="nav-item" data-tab="general">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+            Основные
+          </button>
+        </nav>
+      </aside>
+
+      <!-- Main content -->
+      <main class="main-content">
+        <div class="content-inner">
+          <!-- Languages -->
+          <section class="tab-panel active" id="panel-languages">
+            <h2 class="page-title">Настройки языков</h2>
+            <div class="card card-spaced">
+              <div class="form-group">
+                <label for="ocr-lang">Язык текста (Распознавание)</label>
+                <select id="ocr-lang">
+                  <option value="eng">Английский (English)</option>
+                  <option value="rus">Русский (Russian)</option>
+                  <option value="jpn">Японский (Japanese)</option>
+                  <option value="kor">Корейский (Korean)</option>
+                </select>
+                <p class="form-hint">Язык текста, который находится на вашем экране.</p>
+              </div>
+
+              <div class="form-group">
+                <label for="target-lang">Язык перевода</label>
+                <select id="target-lang">
+                  <option value="ru">Русский</option>
+                  <option value="en">Английский</option>
+                </select>
+                <p class="form-hint">На какой язык нужно перевести текст.</p>
+              </div>
+
+              <div class="form-group card-divider">
+                <label for="service">Сервис перевода</label>
+                <select id="service">
+                  <option>Google Translate</option>
+                  <option>DeepL (в разработке)</option>
+                  <option>Yandex (в разработке)</option>
+                </select>
+              </div>
+            </div>
+          </section>
+
+          <!-- Hotkeys -->
+          <section class="tab-panel" id="panel-hotkeys">
+            <h2 class="page-title">Горячие клавиши</h2>
+            <div class="card">
+              <div class="hotkey-row">
+                <div>
+                  <span class="hotkey-label">Захват экрана</span>
+                  <span class="hotkey-desc">Выделить область — перевод появится прямо на экране</span>
+                </div>
+                <kbd>Ctrl + Shift + E</kbd>
+              </div>
+              <div class="hotkey-row">
+                <div>
+                  <span class="hotkey-label">Закрыть оверлей</span>
+                  <span class="hotkey-desc">Убрать перевод с экрана</span>
+                </div>
+                <kbd>Esc</kbd>
+              </div>
+            </div>
+          </section>
+
+          <!-- History -->
+          <section class="tab-panel" id="panel-history">
+            <h2 class="page-title">История переводов</h2>
+            <div class="card empty-state">
+              История пока пуста. Сделайте свой первый перевод!
+            </div>
+          </section>
+
+          <!-- General -->
+          <section class="tab-panel" id="panel-general">
+            <h2 class="page-title">Основные настройки</h2>
+            <div class="card">
+              <label class="checkbox-row">
+                <input type="checkbox" checked />
+                <span>Запускать вместе с Windows</span>
+              </label>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <p class="design-note">Статический макет · 1024×640 · кликайте вкладки в сайдбаре</p>
+
+  <script>
+    document.querySelectorAll('.nav-item').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tab = btn.dataset.tab;
+        document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('panel-' + tab).classList.add('active');
+      });
+    });
+  </script>
+</body>
+</html>

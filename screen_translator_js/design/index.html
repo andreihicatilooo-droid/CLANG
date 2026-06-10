@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Экранный Переводчик — Design Preview</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="design-tokens.css" />
+  <style>
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg-app);
+      color: var(--text-body);
+      font-family: var(--font-sans);
+      padding: 48px 24px;
+    }
+
+    .hub {
+      max-width: 480px;
+      text-align: center;
+    }
+
+    .hub h1 {
+      font-size: var(--text-2xl);
+      font-weight: var(--font-bold);
+      color: var(--text-primary);
+      margin-bottom: 8px;
+    }
+
+    .hub p {
+      color: var(--text-muted);
+      font-size: var(--text-sm);
+      margin-bottom: 32px;
+    }
+
+    .screen-links {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .screen-links a {
+      display: block;
+      padding: 16px 24px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-card);
+      border-radius: var(--card-radius);
+      color: var(--text-body);
+      text-decoration: none;
+      font-weight: var(--font-medium);
+      transition: border-color 150ms, background 150ms;
+    }
+
+    .screen-links a:hover {
+      border-color: var(--color-blue-500);
+      background: var(--bg-nav-active);
+      color: var(--text-nav-active);
+    }
+
+    .screen-links a span {
+      display: block;
+      font-size: var(--text-xs);
+      color: var(--text-muted);
+      font-weight: var(--font-normal);
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="hub">
+    <h1>Экранный Переводчик</h1>
+    <p>Статические макеты UI · тёмная тема · Inter</p>
+    <nav class="screen-links">
+      <a href="settings-screen.html">
+        Настройки
+        <span>Языки, горячие клавиши, история, основные — 1024×640</span>
+      </a>
+      <a href="capture-screen.html">
+        Захват области
+        <span>Оверлей выделения текста на экране — 1024×640</span>
+      </a>
+    </nav>
+  </div>
+</body>
+</html>

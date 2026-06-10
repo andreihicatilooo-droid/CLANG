@@ -16,7 +16,24 @@ export default function OverlayScreen(): React.JSX.Element {
   const [visible, setVisible] = useState(false)
 
   useEffect(() => {
+    // #region agent log
+    window.electron.ipcRenderer.send('debug-log', {
+      location: 'OverlayScreen.tsx:useEffect',
+      message: 'overlay listener registered',
+      data: { hash: window.location.hash },
+      hypothesisId: 'A'
+    })
+    // #endregion
+
     const onData = (_event: unknown, data: { blocks: OverlayBlock[] }): void => {
+      // #region agent log
+      window.electron.ipcRenderer.send('debug-log', {
+        location: 'OverlayScreen.tsx:onData',
+        message: 'overlay-data received',
+        data: { blockCount: data.blocks?.length ?? 0 },
+        hypothesisId: 'A'
+      })
+      // #endregion
       setVisible(false)
       setBlocks(data.blocks)
       requestAnimationFrame(() => setVisible(true))

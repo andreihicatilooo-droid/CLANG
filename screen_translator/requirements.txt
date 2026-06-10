@@ -1,0 +1,15 @@
+pillow>=10.0.0
+deep-translator>=1.11.0
+pystray>=0.19.5
+google-auth>=2.30.0
+google-auth-oauthlib>=1.2.0
+winrt-runtime>=3.0.0
+winrt-Windows.Media.Ocr>=3.0.0
+winrt-Windows.Graphics.Imaging>=3.0.0
+winrt-Windows.Storage.Streams>=3.0.0
+winrt-Windows.Globalization>=3.0.0
+winrt-Windows.Foundation>=3.0.0
+winrt-Windows.Foundation.Collections>=3.0.0
+pyinstaller>=6.3.0
+opencv-python>=4.8.0
+numpy>=1.24.0

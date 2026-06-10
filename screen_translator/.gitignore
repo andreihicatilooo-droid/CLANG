@@ -1,0 +1,23 @@
+# PyInstaller
+build/
+dist/
+*.spec
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Venv
+.venv/
+venv/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Локальные секреты
+oauth_client.json
+*.token

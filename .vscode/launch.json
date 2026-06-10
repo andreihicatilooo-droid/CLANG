@@ -1,0 +1,98 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Dev: Electron (UI)",
+            "type": "node-terminal",
+            "request": "launch",
+            "command": "npm run dev",
+            "cwd": "${workspaceFolder}/app/electron"
+        },
+        {
+            "name": "Dev: Python Backend",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "backend",
+            "cwd": "${workspaceFolder}/app/python",
+            "python": "${workspaceFolder}/app/python/venv/Scripts/python.exe",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "Dev: Standalone Python (tkinter)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/app/python/screen_translator.py",
+            "cwd": "${workspaceFolder}/app/python",
+            "python": "${workspaceFolder}/app/python/venv/Scripts/python.exe",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "Build + Run: Electron (preview)",
+            "type": "node-terminal",
+            "request": "launch",
+            "command": "npm start",
+            "cwd": "${workspaceFolder}/app/electron",
+            "preLaunchTask": "build:electron"
+        },
+        {
+            "name": "Build: Windows Installer",
+            "type": "node-terminal",
+            "request": "launch",
+            "command": "npm run build:win",
+            "cwd": "${workspaceFolder}/app/electron"
+        },
+        {
+            "name": "Debug: Electron Main Process",
+            "type": "node",
+            "request": "launch",
+            "cwd": "${workspaceFolder}/app/electron",
+            "runtimeExecutable": "${workspaceFolder}/app/electron/node_modules/.bin/electron-vite",
+            "windows": {
+                "runtimeExecutable": "${workspaceFolder}/app/electron/node_modules/.bin/electron-vite.cmd"
+            },
+            "runtimeArgs": [
+                "--sourcemap"
+            ],
+            "env": {
+                "REMOTE_DEBUGGING_PORT": "9222"
+            }
+        },
+        {
+            "name": "Debug: Electron Renderer",
+            "type": "chrome",
+            "request": "attach",
+            "port": 9222,
+            "webRoot": "${workspaceFolder}/app/electron/src/renderer",
+            "timeout": 60000,
+            "presentation": {
+                "hidden": true
+            }
+        }
+    ],
+    "compounds": [
+        {
+            "name": "Dev: Full Stack (Backend + Electron)",
+            "configurations": [
+                "Dev: Python Backend",
+                "Dev: Electron (UI)"
+            ],
+            "stopAll": true,
+            "presentation": {
+                "order": 1
+            }
+        },
+        {
+            "name": "Debug: Electron (Main + Renderer)",
+            "configurations": [
+                "Debug: Electron Main Process",
+                "Debug: Electron Renderer"
+            ],
+            "stopAll": true,
+            "presentation": {
+                "order": 2
+            }
+        }
+    ]
+}

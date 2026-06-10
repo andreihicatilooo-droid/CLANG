@@ -1,0 +1,50 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build:electron",
+      "type": "npm",
+      "script": "build",
+      "path": "app/electron",
+      "group": "build",
+      "problemMatcher": [
+        "$tsc"
+      ]
+    },
+    {
+      "label": "build:backend-exe",
+      "type": "shell",
+      "command": "npm run build:backend",
+      "options": {
+        "cwd": "${workspaceFolder}/app/electron"
+      },
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "build:win",
+      "type": "shell",
+      "command": "npm run build:win",
+      "options": {
+        "cwd": "${workspaceFolder}/app/electron"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": [
+        "$tsc"
+      ]
+    },
+    {
+      "label": "typecheck:electron",
+      "type": "npm",
+      "script": "typecheck",
+      "path": "app/electron",
+      "group": "test",
+      "problemMatcher": [
+        "$tsc"
+      ]
+    }
+  ]
+}

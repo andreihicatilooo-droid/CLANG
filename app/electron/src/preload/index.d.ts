@@ -32,6 +32,10 @@ export interface ScreenTranslatorAPI {
     selected: string
     message: string
   }>
+  validateGcpLocal: (
+    url: string,
+    apiKey?: string
+  ) => Promise<{ valid: boolean; message: string; model?: string }>
   openExternal: (url: string) => Promise<void>
   onConfigChanged: (callback: (config: ScreenTranslatorConfig) => void) => () => void
 }

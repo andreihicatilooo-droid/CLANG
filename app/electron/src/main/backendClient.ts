@@ -166,6 +166,22 @@ export async function validateGeminiApiKey(
   })
 }
 
+export interface ValidateGcpLocalResult {
+  valid: boolean
+  message: string
+  model?: string
+}
+
+export async function validateGcpLocal(
+  url: string,
+  apiKey?: string
+): Promise<ValidateGcpLocalResult> {
+  return rpc<ValidateGcpLocalResult>('validate_gcp_local', {
+    url,
+    api_key: apiKey ?? ''
+  })
+}
+
 export async function shutdownBackend(): Promise<{ status: string }> {
   return rpc('shutdown')
 }

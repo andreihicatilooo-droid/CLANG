@@ -1,27 +1,33 @@
 import { globalShortcut } from 'electron'
-import type { ScreenTranslatorConfig } from '../shared/config'
-import { hotkeyToAccelerator } from '../shared/config'
+import type { HotkeyMode, ScreenTranslatorConfig } from '../shared/config'
+import { getHotkeyBindings, hotkeyBindingToAccelerator } from '../shared/config'
 
-let captureAccelerator: string | null = null
+let captureAccelerators: string[] = []
 
 export function registerCaptureHotkey(
   config: ScreenTranslatorConfig,
-  onTrigger: () => void
+  onTrigger: (mode?: HotkeyMode) => void
 ): void {
   unregisterCaptureHotkey()
 
-  const accelerator = hotkeyToAccelerator(config)
-  const ok = globalShortcut.register(accelerator, onTrigger)
-  if (!ok) {
-    console.warn(`[hotkey] Failed to register ${accelerator}`)
-    return
+  const seen = new Set<string>()
+  for (const binding of getHotkeyBindings(config)) {
+    const accelerator = hotkeyBindingToAccelerator(binding)
+    if (seen.has(accelerator)) continue
+    seen.add(accelerator)
+
+    const ok = globalShortcut.register(accelerator, () => onTrigger(binding.mode))
+    if (!ok) {
+      console.warn(`[hotkey] Failed to register ${accelerator}`)
+      continue
+    }
+    captureAccelerators.push(accelerator)
   }
-  captureAccelerator = accelerator
 }
 
 export function unregisterCaptureHotkey(): void {
-  if (captureAccelerator) {
-    globalShortcut.unregister(captureAccelerator)
-    captureAccelerator = null
+  for (const accelerator of captureAccelerators) {
+    globalShortcut.unregister(accelerator)
   }
+  captureAccelerators = []
 }

@@ -9,6 +9,8 @@ interface OverlayBlock {
   bgColor: string
   textColor: string
   fontSize: number
+  fontWeight?: number
+  textShadow?: string
   imageUrl?: string
 }
 
@@ -59,6 +61,8 @@ export default function OverlayScreen(): React.JSX.Element {
                 backgroundColor: block.bgColor,
                 color: block.textColor,
                 fontSize: block.fontSize,
+                fontWeight: block.fontWeight ?? 500,
+                textShadow: block.textShadow,
                 opacity: visible ? 1 : 0
               }}
             >

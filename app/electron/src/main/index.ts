@@ -2,13 +2,9 @@ import { app, BrowserWindow, clipboard, ipcMain, Menu, screen, shell, Tray } fro
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import Jimp from 'jimp'
 import {
   buildErrorBlock,
-  buildFullRegionBlock,
-  buildOverlayBlocks,
-  buildSeamlessImageBlock,
-  scaleBlocksToDip,
+  buildLoadingBlock,
   overlayStyleFromConfig,
   type OverlayBlock
 } from './overlayHelpers'
@@ -29,12 +25,19 @@ import {
   oauthStatus,
   oauthLogout,
   validateGeminiApiKey,
+  validateGcpLocal,
   listGeminiModels,
   scanAiStudio
 } from './backendClient'
 import { registerCaptureHotkey, unregisterCaptureHotkey } from './hotkeyManager'
+import {
+  blocksFromTranslateResult,
+  makeRegionKey,
+  processCapturedRegion
+} from './regionTranslate'
+import type { TranslateRegionResult } from './backendClient'
 import type { ScreenTranslatorConfig } from '../shared/config'
-import { CONFIG_DEFAULTS, describeHotkey } from '../shared/config'
+import { CONFIG_DEFAULTS, describeHotkeys } from '../shared/config'
 
 let isQuitting = false
 
@@ -47,6 +50,12 @@ let overlayPayload: { blocks: OverlayBlock[]; width: number; height: number } | 
 let appConfig: ScreenTranslatorConfig = { ...CONFIG_DEFAULTS }
 let captureVirtualBounds: VirtualBounds | null = null
 let backendStopRequested = false
+let previewRequestId = 0
+let regionTranslateCache: {
+  key: string
+  result: TranslateRegionResult
+  processed: Awaited<ReturnType<typeof processCapturedRegion>>
+} | null = null
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock()
 if (!gotSingleInstanceLock) {
@@ -103,7 +112,7 @@ function createTray(): void {
 
 function rebuildTrayMenu(): void {
   if (!tray) return
-  const hotkeyLabel = describeHotkey(appConfig)
+  const hotkeyLabel = describeHotkeys(appConfig)
   const contextMenu = Menu.buildFromTemplate([
     { label: 'Settings', click: () => mainWindow?.show() },
     {
@@ -122,12 +131,28 @@ function rebuildTrayMenu(): void {
   tray.setContextMenu(contextMenu)
 }
 
-function captureRouteHash(offsetX: number, offsetY: number): string {
-  return `capture?ox=${offsetX}&oy=${offsetY}`
+function captureRouteHash(
+  offsetX: number,
+  offsetY: number,
+  livePreviewEnabled: boolean,
+  livePreviewDebounceMs: number
+): string {
+  const lp = livePreviewEnabled ? 1 : 0
+  return `capture?ox=${offsetX}&oy=${offsetY}&lp=${lp}&lpd=${livePreviewDebounceMs}`
 }
 
-function loadCaptureRoute(win: BrowserWindow, offsetX: number, offsetY: number): void {
-  const route = captureRouteHash(offsetX, offsetY)
+function loadCaptureRoute(
+  win: BrowserWindow,
+  offsetX: number,
+  offsetY: number,
+  livePreviewOverride?: boolean
+): void {
+  const route = captureRouteHash(
+    offsetX,
+    offsetY,
+    livePreviewOverride ?? appConfig.live_preview_enabled,
+    appConfig.live_preview_debounce_ms
+  )
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(`${process.env['ELECTRON_RENDERER_URL']}#/${route}`)
   } else {
@@ -139,7 +164,7 @@ function closeAllCaptureWindows(): void {
   captureWindows.filter((win) => !win.isDestroyed()).forEach((win) => win.close())
 }
 
-function openCaptureWindow(): void {
+function openCaptureWindow(livePreviewOverride?: boolean): void {
   const active = captureWindows.filter((win) => !win.isDestroyed())
   if (active.length > 0) {
     active.forEach((win) => win.show())
@@ -147,6 +172,8 @@ function openCaptureWindow(): void {
   }
 
   captureWindows = []
+  regionTranslateCache = null
+  previewRequestId = 0
   captureVirtualBounds = getVirtualDesktopBounds()
   const displays = screen.getAllDisplays()
 
@@ -174,7 +201,7 @@ function openCaptureWindow(): void {
     })
 
     win.setAlwaysOnTop(true, 'screen-saver')
-    loadCaptureRoute(win, offsetX, offsetY)
+    loadCaptureRoute(win, offsetX, offsetY, livePreviewOverride)
 
     win.on('closed', () => {
       captureWindows = captureWindows.filter((w) => w !== win)
@@ -214,6 +241,30 @@ function closeOverlay(): void {
     overlayWindow = null
     win.close()
   }
+}
+
+function replaceOverlayBlocks(blocks: OverlayBlock[]): void {
+  if (!overlayWindow || overlayWindow.isDestroyed() || !overlayPayload) return
+  overlayPayload = { ...overlayPayload, blocks }
+  overlayWindow.webContents.send('overlay-data', overlayPayload)
+}
+
+async function captureRegionHidden(region: Parameters<typeof captureDisplayRegion>[0]) {
+  const wins = captureWindows.filter((win) => !win.isDestroyed())
+  const savedOpacity = wins.map((win) => win.getOpacity())
+  wins.forEach((win) => win.setOpacity(0))
+  await new Promise((resolve) => setTimeout(resolve, 40))
+  try {
+    return await captureDisplayRegion(region)
+  } finally {
+    wins.forEach((win, index) => win.setOpacity(savedOpacity[index] ?? 1))
+  }
+}
+
+function broadcastPreviewResult(payload: Record<string, unknown>): void {
+  captureWindows
+    .filter((win) => !win.isDestroyed())
+    .forEach((win) => win.webContents.send('preview-result', payload))
 }
 
 function deliverOverlayData(): void {
@@ -293,7 +344,9 @@ async function loadAppConfig(): Promise<void> {
 }
 
 function applyConfigSideEffects(): void {
-  registerCaptureHotkey(appConfig, () => openCaptureWindow())
+  registerCaptureHotkey(appConfig, (mode) =>
+    openCaptureWindow(mode === 'live' ? true : mode === 'window' ? false : undefined)
+  )
   rebuildTrayMenu()
   mainWindow?.webContents.send('config-changed', appConfig)
 }
@@ -335,6 +388,9 @@ if (gotSingleInstanceLock) {
     ipcMain.handle('validate-gemini-api-key', async (_event, apiKey: string, model?: string) =>
       validateGeminiApiKey(apiKey, model)
     )
+    ipcMain.handle('validate-gcp-local', async (_event, url: string, apiKey?: string) =>
+      validateGcpLocal(url, apiKey)
+    )
     ipcMain.handle('list-gemini-models', async (_event, apiKey: string) =>
       listGeminiModels(apiKey)
     )
@@ -348,6 +404,7 @@ if (gotSingleInstanceLock) {
     })
 
     ipcMain.on('close-capture', () => {
+      regionTranslateCache = null
       closeAllCaptureWindows()
     })
 
@@ -363,73 +420,98 @@ if (gotSingleInstanceLock) {
       deliverOverlayData()
     })
 
+    ipcMain.on('preview-region', async (_event, { x, y, width, height, seq }) => {
+      const requestId = ++previewRequestId
+      const virtualBounds = captureVirtualBounds ?? getVirtualDesktopBounds()
+      const region = resolveRegionSelection(virtualBounds, x, y, width, height)
+      const wins = captureWindows.filter((win) => !win.isDestroyed())
+      if (wins.length === 0) return
+
+      broadcastPreviewResult({ seq, loading: true })
+
+      try {
+        const captured = await captureRegionHidden(region)
+        const processed = await processCapturedRegion(captured)
+        const result = await translateRegion(processed.imageBase64)
+
+        if (requestId !== previewRequestId) return
+
+        regionTranslateCache = {
+          key: makeRegionKey(x, y, width, height),
+          result,
+          processed
+        }
+
+        broadcastPreviewResult({
+          seq,
+          loading: false,
+          translated: result.translated,
+          original: result.original,
+          error: result.error
+        })
+      } catch (err) {
+        console.error('[preview-region]', err)
+        if (requestId !== previewRequestId) return
+        broadcastPreviewResult({
+          seq,
+          loading: false,
+          error: 'Ошибка перевода'
+        })
+      }
+    })
+
     ipcMain.on('process-region', async (_event, { x, y, width, height }) => {
       const virtualBounds = captureVirtualBounds ?? getVirtualDesktopBounds()
-      await closeCaptureWindowAndWait()
-
       const region = resolveRegionSelection(virtualBounds, x, y, width, height)
       const { globalX, globalY } = region
       const overlayStyle = overlayStyleFromConfig(appConfig)
+      const regionKey = makeRegionKey(x, y, width, height)
+      const cached = regionTranslateCache?.key === regionKey ? regionTranslateCache : null
+
+      await closeCaptureWindowAndWait()
+      regionTranslateCache = null
+
+      showOverlay(
+        globalX,
+        globalY,
+        width,
+        height,
+        buildLoadingBlock(width, height, 'Перевод…', overlayStyle)
+      )
 
       try {
-        const { imageBuffer, cropX, cropY, cropW, cropH, scaleFactor } =
-          await captureDisplayRegion(region)
-        const image = await Jimp.read(imageBuffer)
+        let result: TranslateRegionResult
+        let processed: Awaited<ReturnType<typeof processCapturedRegion>>
 
-        const safeCropW = Math.max(1, Math.min(cropW, image.bitmap.width - cropX))
-        const safeCropH = Math.max(1, Math.min(cropH, image.bitmap.height - cropY))
-
-        image.crop(cropX, cropY, safeCropW, safeCropH)
-        const croppedBuffer = await image.getBufferAsync(Jimp.MIME_PNG)
-        const imageBase64 = croppedBuffer.toString('base64')
-
-        const result = await translateRegion(imageBase64)
-
-        if (result.error) {
-          showOverlay(
-            globalX,
-            globalY,
-            width,
-            height,
-            buildErrorBlock(width, height, result.error, overlayStyle)
-          )
-          return
-        }
-
-        if (result.seamless_image_base64) {
-          const dataUrl = `data:image/png;base64,${result.seamless_image_base64}`
-          const blocks = scaleBlocksToDip(
-            buildSeamlessImageBlock(safeCropW, safeCropH, dataUrl),
-            scaleFactor
-          )
-          showOverlay(globalX, globalY, width, height, blocks)
-          return
+        if (cached && !cached.result.error) {
+          result = cached.result
+          processed = cached.processed
+        } else {
+          const captured = await captureDisplayRegion(region)
+          processed = await processCapturedRegion(captured)
+          result = await translateRegion(processed.imageBase64)
         }
 
         if (appConfig.copy_to_clipboard && result.translated) {
           clipboard.writeText(result.translated)
         }
 
-        const displayText =
-          appConfig.show_original && result.original
-            ? `${result.original}\n\n──\n${result.translated}`
-            : result.translated
-        const lineOverlayText = result.translated
-
-        let blocks =
-          result.lines.length > 0
-            ? buildOverlayBlocks(result.lines, lineOverlayText, image, overlayStyle)
-            : buildFullRegionBlock(safeCropW, safeCropH, displayText, image, overlayStyle)
-        blocks = scaleBlocksToDip(blocks, scaleFactor)
-
-        showOverlay(globalX, globalY, width, height, blocks)
-      } catch (err) {
-        console.error(err)
-        showOverlay(
-          globalX,
-          globalY,
+        const blocks = blocksFromTranslateResult(
+          result,
+          processed.image,
+          processed.safeCropW,
+          processed.safeCropH,
+          processed.scaleFactor,
           width,
           height,
+          appConfig,
+          overlayStyle
+        )
+
+        replaceOverlayBlocks(blocks)
+      } catch (err) {
+        console.error(err)
+        replaceOverlayBlocks(
           buildErrorBlock(width, height, 'Ошибка перевода', overlayStyle)
         )
       }

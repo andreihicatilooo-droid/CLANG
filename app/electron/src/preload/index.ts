@@ -37,6 +37,11 @@ const api = {
     selected: string
     message: string
   }> => ipcRenderer.invoke('scan-ai-studio', apiKey, currentModel, modelAuto),
+  validateGcpLocal: (
+    url: string,
+    apiKey?: string
+  ): Promise<{ valid: boolean; message: string; model?: string }> =>
+    ipcRenderer.invoke('validate-gcp-local', url, apiKey),
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke('open-external', url),
   onConfigChanged: (callback: (config: ScreenTranslatorConfig) => void): (() => void) => {
     const handler = (_event: unknown, config: ScreenTranslatorConfig): void => callback(config)

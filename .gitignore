@@ -4,3 +4,9 @@ venv/
 
 # Editor / tooling (optional local)
 .claude/
+
+# Local backup of former nested screen_translator .git
+.screen_translator_git_backup/
+
+# Editor backup files
+*.bak

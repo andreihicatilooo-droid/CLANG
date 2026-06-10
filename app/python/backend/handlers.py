@@ -5,22 +5,46 @@ import threading
 
 from PIL import Image
 
-from app import config, oauth, ocr, translators
+from app import api_validation, config, oauth, ocr, translators
 
 VERSION = '1.0.0'
+OAUTH_TIMEOUT_SEC = 120
 
 _oauth_lock = threading.Lock()
-_oauth_result = {'done': False, 'success': False, 'message': ''}
+_oauth_in_progress = False
+_oauth_timeout_timer: threading.Timer | None = None
+_oauth_result = {'done': True, 'success': False, 'message': ''}
 
 
-def _reset_oauth_result():
-    _oauth_result['done'] = False
-    _oauth_result['success'] = False
-    _oauth_result['message'] = ''
+def _clear_oauth_timeout():
+    global _oauth_timeout_timer
+    if _oauth_timeout_timer is not None:
+        _oauth_timeout_timer.cancel()
+        _oauth_timeout_timer = None
+
+
+def _finish_oauth(success: bool, msg: str):
+    global _oauth_in_progress
+    with _oauth_lock:
+        _clear_oauth_timeout()
+        _oauth_in_progress = False
+        _oauth_result['done'] = True
+        _oauth_result['success'] = success
+        _oauth_result['message'] = msg
+
+
+def _oauth_timed_out():
+    _finish_oauth(False, 'OAuth timed out')
 
 
 def handle_health(_params):
     return {'status': 'ok', 'version': VERSION}
+
+
+def handle_shutdown(_params):
+    from . import server
+    server.request_shutdown()
+    return {'status': 'shutting_down'}
 
 
 def handle_get_config(_params):
@@ -46,16 +70,23 @@ def handle_oauth_logout(_params):
 
 
 def handle_oauth_start(_params):
+    global _oauth_in_progress, _oauth_timeout_timer
+
     with _oauth_lock:
-        if not _oauth_result['done']:
+        if _oauth_in_progress:
             return {'started': False, 'message': 'OAuth already in progress'}
 
-        _reset_oauth_result()
+        _oauth_in_progress = True
+        _oauth_result['done'] = False
+        _oauth_result['success'] = False
+        _oauth_result['message'] = ''
+        _clear_oauth_timeout()
+        _oauth_timeout_timer = threading.Timer(OAUTH_TIMEOUT_SEC, _oauth_timed_out)
+        _oauth_timeout_timer.daemon = True
+        _oauth_timeout_timer.start()
 
         def on_done(success, msg):
-            _oauth_result['done'] = True
-            _oauth_result['success'] = success
-            _oauth_result['message'] = msg
+            _finish_oauth(success, msg)
 
         oauth.run_oauth_flow(on_done)
         return {'started': True}
@@ -71,6 +102,24 @@ def handle_oauth_poll(_params):
             'message': _oauth_result['message'],
             'authorized': oauth.is_authorized(),
         }
+
+
+def handle_list_gemini_models(params):
+    api_key = params.get('api_key', '')
+    return api_validation.list_ai_studio_models(api_key)
+
+
+def handle_scan_ai_studio(params):
+    api_key = params.get('api_key', '')
+    current_model = params.get('current_model')
+    model_auto = params.get('model_auto', True)
+    return api_validation.scan_ai_studio(api_key, current_model, model_auto)
+
+
+def handle_validate_gemini_api_key(params):
+    api_key = params.get('api_key', '')
+    model = params.get('model')
+    return api_validation.validate_gemini_api_key(api_key, model)
 
 
 def handle_translate_region(params):
@@ -91,7 +140,7 @@ def handle_translate_region(params):
         lines = []
 
     try:
-        translated, original = translators.translate_image(img)
+        translated, original = translators.translate_image(img, lines=lines)
     except translators.TranslationError as e:
         return {'error': str(e), 'lines': lines}
     except Exception as e:
@@ -122,6 +171,7 @@ def handle_translate_region(params):
 
 METHODS = {
     'health': handle_health,
+    'shutdown': handle_shutdown,
     'get_config': handle_get_config,
     'save_config': handle_save_config,
     'get_ocr_languages': handle_get_ocr_languages,
@@ -130,4 +180,7 @@ METHODS = {
     'oauth_poll': handle_oauth_poll,
     'oauth_status': handle_oauth_status,
     'oauth_logout': handle_oauth_logout,
+    'validate_gemini_api_key': handle_validate_gemini_api_key,
+    'list_gemini_models': handle_list_gemini_models,
+    'scan_ai_studio': handle_scan_ai_studio,
 }

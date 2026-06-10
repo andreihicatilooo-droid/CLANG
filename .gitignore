@@ -4,22 +4,55 @@ venv/
 **/__pycache__/
 *.pyc
 *.pyo
+*.py[cod]
+*$py.class
+.Python
 
 # Python build artifacts
 app/python/build/
 app/python/dist/
+*.egg-info/
+.eggs/
 
 # Node / Electron
+node_modules/
 app/electron/node_modules/
 app/electron/dist/
 app/electron/out/
 .eslintcache
+*.tsbuildinfo
 
-# Editor / tooling (optional local)
+# Editor / tooling (local only)
 .claude/
+.idea/
+*.swp
+*.swo
+*~
 
 # Editor backup files
 *.bak
 
+# OS
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
 # Logs
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Secrets and local config (never commit)
+.env
+.env.*
+*_token.json
+google_token.json
+**/google_credentials.json
+
+# Test / coverage
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/

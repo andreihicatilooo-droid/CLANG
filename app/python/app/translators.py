@@ -94,9 +94,11 @@ def _gemini_call(url, headers, body):
 def _translate_gemini_vision_api(pil_image, target, with_original):
     api_key = config.get('gemini_api_key').strip()
     if not api_key:
-        raise TranslationError('Не задан Gemini API key (Настройки → Перевод).')
+        raise TranslationError('Не задан API-ключ Google AI Studio (Настройки → Языки).')
 
-    model = config.get('gemini_model') or 'gemini-2.5-flash'
+    model = api_validation.resolve_gemini_model()
+    if not model:
+        model = 'gemini-2.5-flash'
     url = (f'https://generativelanguage.googleapis.com/v1beta/'
            f'models/{model}:generateContent?key={api_key}')
 
@@ -148,17 +150,27 @@ def _translate_gemini_vision_oauth(pil_image, target, with_original):
 
 
 # ── Public dispatcher ──────────────────────────────────────────────────────
-def translate_image(pil_image):
-    """Returns (translated_text_or_image, original_text_or_None)."""
+def _lines_to_text(lines):
+    if not lines:
+        return ''
+    return '\n'.join(l['text'] for l in lines if l.get('text'))
+
+
+def translate_image(pil_image, lines=None):
+    """Returns (translated_text_or_image, original_text_or_None).
+
+    lines: optional precomputed OCR boxes from recognize_with_boxes(); when
+    provided, OCR is not run again inside this function.
+    """
     engine = config.get('engine')
     target = config.get('target_lang') or 'ru'
     show_original = bool(config.get('show_original'))
     seamless = bool(config.get('overlay_seamless'))
+    ocr_lang = config.get('ocr_lang') or 'en-US'
 
-    lines_data = None
-    if seamless:
+    lines_data = lines
+    if seamless and lines_data is None:
         from . import ocr
-        ocr_lang = config.get('ocr_lang') or 'en'
         try:
             lines_data = ocr.recognize_with_boxes(pil_image, ocr_lang)
         except Exception:
@@ -168,38 +180,39 @@ def translate_image(pil_image):
         fn = (_translate_gemini_vision_api
               if engine == 'gemini_api' else _translate_gemini_vision_oauth)
         result = fn(pil_image, target, show_original)
-        
+
         translated, original = result, None
         if show_original and '---' in result:
             parts = [p.strip() for p in result.split('---', 1)]
             if len(parts) == 2:
                 translated, original = parts[1], parts[0]
-                
+
         if seamless and lines_data:
             from .inpainting import draw_translated_seamless
             return draw_translated_seamless(pil_image, lines_data, translated), original
-            
+
         return translated, original
 
     # Google route: Windows OCR -> deep-translator
-    from . import ocr
-    ocr_lang = config.get('ocr_lang') or 'en'
-    if seamless and lines_data is not None:
-        original = '\n'.join([l['text'] for l in lines_data])
+    if lines is not None:
+        original = _lines_to_text(lines)
+    elif seamless and lines_data is not None:
+        original = _lines_to_text(lines_data)
     else:
+        from . import ocr
         try:
             original = ocr.recognize(pil_image, ocr_lang)
         except Exception as e:
             raise TranslationError(f'Windows OCR: {e}')
-            
+
     if not original:
         return '', None
-        
+
     translated = _translate_google_text(
         original, config.get('source_lang') or 'auto', target)
-        
+
     if seamless and lines_data:
         from .inpainting import draw_translated_seamless
         return draw_translated_seamless(pil_image, lines_data, translated), (original if show_original else None)
-        
+
     return translated, (original if show_original else None)

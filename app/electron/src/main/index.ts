@@ -1,8 +1,7 @@
-import { app, BrowserWindow, clipboard, ipcMain, screen, Tray, Menu, globalShortcut } from 'electron'
+import { app, BrowserWindow, clipboard, ipcMain, Menu, screen, shell, Tray } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import screenshot from 'screenshot-desktop'
 import Jimp from 'jimp'
 import {
   buildErrorBlock,
@@ -10,9 +9,16 @@ import {
   buildOverlayBlocks,
   buildSeamlessImageBlock,
   scaleBlocksToDip,
+  overlayStyleFromConfig,
   type OverlayBlock
 } from './overlayHelpers'
-import { startPythonBackend, stopPythonBackend } from './pythonManager'
+import {
+  captureDisplayRegion,
+  getVirtualDesktopBounds,
+  resolveRegionSelection,
+  type VirtualBounds
+} from './displayCapture'
+import { isBackendRunning, startPythonBackend, stopPythonBackend } from './pythonManager'
 import {
   getConfig,
   saveConfig,
@@ -21,7 +27,10 @@ import {
   oauthStart,
   oauthPoll,
   oauthStatus,
-  oauthLogout
+  oauthLogout,
+  validateGeminiApiKey,
+  listGeminiModels,
+  scanAiStudio
 } from './backendClient'
 import { registerCaptureHotkey, unregisterCaptureHotkey } from './hotkeyManager'
 import type { ScreenTranslatorConfig } from '../shared/config'
@@ -30,13 +39,23 @@ import { CONFIG_DEFAULTS, describeHotkey } from '../shared/config'
 let isQuitting = false
 
 let mainWindow: BrowserWindow | null = null
-let captureWindow: BrowserWindow | null = null
+let captureWindows: BrowserWindow[] = []
 let overlayWindow: BrowserWindow | null = null
 let tray: Tray | null = null
-let overlayDismissRegistered = false
 let overlayCloseTimer: ReturnType<typeof setTimeout> | null = null
 let overlayPayload: { blocks: OverlayBlock[]; width: number; height: number } | null = null
 let appConfig: ScreenTranslatorConfig = { ...CONFIG_DEFAULTS }
+let captureVirtualBounds: VirtualBounds | null = null
+let backendStopRequested = false
+
+const gotSingleInstanceLock = app.requestSingleInstanceLock()
+if (!gotSingleInstanceLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    mainWindow?.show()
+  })
+}
 
 function getOverlayAutoCloseMs(): number {
   const seconds = appConfig.overlay_auto_close ?? 30
@@ -103,53 +122,85 @@ function rebuildTrayMenu(): void {
   tray.setContextMenu(contextMenu)
 }
 
+function captureRouteHash(offsetX: number, offsetY: number): string {
+  return `capture?ox=${offsetX}&oy=${offsetY}`
+}
+
+function loadCaptureRoute(win: BrowserWindow, offsetX: number, offsetY: number): void {
+  const route = captureRouteHash(offsetX, offsetY)
+  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    win.loadURL(`${process.env['ELECTRON_RENDERER_URL']}#/${route}`)
+  } else {
+    win.loadFile(join(__dirname, '../renderer/index.html'), { hash: route })
+  }
+}
+
+function closeAllCaptureWindows(): void {
+  captureWindows.filter((win) => !win.isDestroyed()).forEach((win) => win.close())
+}
+
 function openCaptureWindow(): void {
-  if (captureWindow) {
-    captureWindow.show()
+  const active = captureWindows.filter((win) => !win.isDestroyed())
+  if (active.length > 0) {
+    active.forEach((win) => win.show())
     return
   }
 
-  const primaryDisplay = screen.getPrimaryDisplay()
-  const { width, height, x, y } = primaryDisplay.bounds
+  captureWindows = []
+  captureVirtualBounds = getVirtualDesktopBounds()
+  const displays = screen.getAllDisplays()
 
-  captureWindow = new BrowserWindow({
-    width,
-    height,
-    x,
-    y,
-    frame: false,
-    transparent: true,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    hasShadow: false,
-    resizable: false,
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
-    }
-  })
+  for (const display of displays) {
+    const { x, y, width, height } = display.bounds
+    const offsetX = x - captureVirtualBounds.x
+    const offsetY = y - captureVirtualBounds.y
 
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    captureWindow.loadURL(process.env['ELECTRON_RENDERER_URL'] + '#/capture')
-  } else {
-    captureWindow.loadFile(join(__dirname, '../renderer/index.html'), { hash: 'capture' })
+    const win = new BrowserWindow({
+      x,
+      y,
+      width,
+      height,
+      frame: false,
+      transparent: true,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      hasShadow: false,
+      resizable: false,
+      focusable: true,
+      webPreferences: {
+        preload: join(__dirname, '../preload/index.js'),
+        sandbox: false
+      }
+    })
+
+    win.setAlwaysOnTop(true, 'screen-saver')
+    loadCaptureRoute(win, offsetX, offsetY)
+
+    win.on('closed', () => {
+      captureWindows = captureWindows.filter((w) => w !== win)
+      if (captureWindows.length === 0) {
+        captureVirtualBounds = null
+      }
+    })
+
+    captureWindows.push(win)
   }
-
-  captureWindow.on('closed', () => {
-    captureWindow = null
-  })
 }
 
-function registerOverlayDismiss(): void {
-  if (overlayDismissRegistered) return
-  globalShortcut.register('Escape', () => closeOverlay())
-  overlayDismissRegistered = true
-}
+async function closeCaptureWindowAndWait(): Promise<void> {
+  const wins = captureWindows.filter((win) => !win.isDestroyed())
+  if (wins.length === 0) return
 
-function unregisterOverlayDismiss(): void {
-  if (!overlayDismissRegistered) return
-  globalShortcut.unregister('Escape')
-  overlayDismissRegistered = false
+  await Promise.all(
+    wins.map(
+      (win) =>
+        new Promise<void>((resolve) => {
+          win.once('closed', () => setTimeout(resolve, 80))
+          win.close()
+        })
+    )
+  )
+  captureWindows = []
 }
 
 function closeOverlay(): void {
@@ -158,10 +209,10 @@ function closeOverlay(): void {
     overlayCloseTimer = null
   }
   overlayPayload = null
-  unregisterOverlayDismiss()
   if (overlayWindow) {
-    overlayWindow.close()
+    const win = overlayWindow
     overlayWindow = null
+    win.close()
   }
 }
 
@@ -169,6 +220,7 @@ function deliverOverlayData(): void {
   if (!overlayWindow || !overlayPayload) return
   overlayWindow.webContents.send('overlay-data', overlayPayload)
   overlayWindow.showInactive()
+  overlayWindow.focus()
 }
 
 function showOverlay(
@@ -180,7 +232,7 @@ function showOverlay(
 ): void {
   closeOverlay()
 
-  overlayWindow = new BrowserWindow({
+  const win = new BrowserWindow({
     x: screenX,
     y: screenY,
     width,
@@ -192,7 +244,7 @@ function showOverlay(
     skipTaskbar: true,
     hasShadow: false,
     resizable: false,
-    focusable: false,
+    focusable: true,
     show: false,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -200,172 +252,194 @@ function showOverlay(
     }
   })
 
-  overlayWindow.setIgnoreMouseEvents(true, { forward: true })
+  overlayWindow = win
+  win.setIgnoreMouseEvents(true, { forward: true })
   overlayPayload = { blocks, width, height }
 
+  win.webContents.on('before-input-event', (_event, input) => {
+    if (input.type === 'keyDown' && input.key === 'Escape') {
+      closeOverlay()
+    }
+  })
+
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    overlayWindow.loadURL(process.env['ELECTRON_RENDERER_URL'] + '#/overlay')
+    win.loadURL(process.env['ELECTRON_RENDERER_URL'] + '#/overlay')
   } else {
-    overlayWindow.loadFile(join(__dirname, '../renderer/index.html'), { hash: 'overlay' })
+    win.loadFile(join(__dirname, '../renderer/index.html'), { hash: 'overlay' })
   }
 
-  overlayWindow.on('closed', () => {
+  win.on('closed', () => {
+    if (overlayWindow !== win) return
     overlayWindow = null
-    unregisterOverlayDismiss()
     if (overlayCloseTimer) {
       clearTimeout(overlayCloseTimer)
       overlayCloseTimer = null
     }
   })
 
-  registerOverlayDismiss()
   const autoCloseMs = getOverlayAutoCloseMs()
   if (autoCloseMs > 0) {
     overlayCloseTimer = setTimeout(() => closeOverlay(), autoCloseMs)
   }
 }
 
-function regionToScreen(x: number, y: number): { screenX: number; screenY: number } {
-  const primaryDisplay = screen.getPrimaryDisplay()
-  return {
-    screenX: primaryDisplay.bounds.x + x,
-    screenY: primaryDisplay.bounds.y + y
-  }
-}
-
-async function reloadAppConfig(): Promise<void> {
+async function loadAppConfig(): Promise<void> {
   try {
     appConfig = await getConfig()
   } catch (err) {
     console.error('[config] load failed, using defaults:', err)
     appConfig = { ...CONFIG_DEFAULTS }
   }
+}
+
+function applyConfigSideEffects(): void {
   registerCaptureHotkey(appConfig, () => openCaptureWindow())
   rebuildTrayMenu()
   mainWindow?.webContents.send('config-changed', appConfig)
 }
 
-app.whenReady().then(async () => {
-  electronApp.setAppUserModelId('com.screentranslator.app')
-  app.on('browser-window-created', (_, window) => {
-    optimizer.watchWindowShortcuts(window)
-  })
-
-  try {
-    await startPythonBackend()
-    await reloadAppConfig()
-  } catch (err) {
-    console.error('[startup] backend failed:', err)
-  }
-
-  createWindow()
-  createTray()
-
-  ipcMain.handle('get-config', async () => {
-    await reloadAppConfig()
-    return appConfig
-  })
-
-  ipcMain.handle('save-config', async (_event, updates: Partial<ScreenTranslatorConfig>) => {
-    appConfig = await saveConfig(updates)
-    registerCaptureHotkey(appConfig, () => openCaptureWindow())
-    rebuildTrayMenu()
-    mainWindow?.webContents.send('config-changed', appConfig)
-    return appConfig
-  })
-
-  ipcMain.handle('get-ocr-languages', async () => getOcrLanguages())
-  ipcMain.handle('oauth-start', async () => oauthStart())
-  ipcMain.handle('oauth-poll', async () => oauthPoll())
-  ipcMain.handle('oauth-status', async () => oauthStatus())
-  ipcMain.handle('oauth-logout', async () => oauthLogout())
-
-  ipcMain.on('close-capture', () => {
-    if (captureWindow) captureWindow.close()
-  })
-
-  ipcMain.on('close-overlay', () => {
-    closeOverlay()
-  })
-
-  ipcMain.on('overlay-ready', () => {
-    deliverOverlayData()
-  })
-
-  ipcMain.on('process-region', async (_event, { x, y, width, height }) => {
-    if (captureWindow) captureWindow.close()
-
-    const { screenX, screenY } = regionToScreen(x, y)
-    const primaryDisplay = screen.getPrimaryDisplay()
+if (gotSingleInstanceLock) {
+  app.whenReady().then(async () => {
+    electronApp.setAppUserModelId('com.screentranslator.app')
+    app.on('browser-window-created', (_, window) => {
+      optimizer.watchWindowShortcuts(window)
+    })
 
     try {
-      const imgBuffer = await screenshot()
-      const image = await Jimp.read(imgBuffer)
+      await startPythonBackend()
+      await loadAppConfig()
+      applyConfigSideEffects()
+    } catch (err) {
+      console.error('[startup] backend failed:', err)
+    }
 
-      const scaleFactor = primaryDisplay.scaleFactor
-      const cropX = Math.round(x * scaleFactor)
-      const cropY = Math.round(y * scaleFactor)
-      const cropW = Math.round(width * scaleFactor)
-      const cropH = Math.round(height * scaleFactor)
+    createWindow()
+    createTray()
 
-      image.crop(cropX, cropY, cropW, cropH)
-      const croppedBuffer = await image.getBufferAsync(Jimp.MIME_PNG)
-      const imageBase64 = croppedBuffer.toString('base64')
+    ipcMain.handle('get-config', async () => {
+      await loadAppConfig()
+      return appConfig
+    })
 
-      const result = await translateRegion(imageBase64)
+    ipcMain.handle('save-config', async (_event, updates: Partial<ScreenTranslatorConfig>) => {
+      appConfig = await saveConfig(updates)
+      applyConfigSideEffects()
+      return appConfig
+    })
 
-      if (result.error) {
+    ipcMain.handle('get-ocr-languages', async () => getOcrLanguages())
+    ipcMain.handle('oauth-start', async () => oauthStart())
+    ipcMain.handle('oauth-poll', async () => oauthPoll())
+    ipcMain.handle('oauth-status', async () => oauthStatus())
+    ipcMain.handle('oauth-logout', async () => oauthLogout())
+    ipcMain.handle('validate-gemini-api-key', async (_event, apiKey: string, model?: string) =>
+      validateGeminiApiKey(apiKey, model)
+    )
+    ipcMain.handle('list-gemini-models', async (_event, apiKey: string) =>
+      listGeminiModels(apiKey)
+    )
+    ipcMain.handle(
+      'scan-ai-studio',
+      async (_event, apiKey: string, currentModel?: string, modelAuto?: boolean) =>
+        scanAiStudio(apiKey, currentModel, modelAuto ?? true)
+    )
+    ipcMain.handle('open-external', async (_event, url: string) => {
+      await shell.openExternal(url)
+    })
+
+    ipcMain.on('close-capture', () => {
+      closeAllCaptureWindows()
+    })
+
+    screen.on('display-metrics-changed', () => {
+      closeAllCaptureWindows()
+    })
+
+    ipcMain.on('close-overlay', () => {
+      closeOverlay()
+    })
+
+    ipcMain.on('overlay-ready', () => {
+      deliverOverlayData()
+    })
+
+    ipcMain.on('process-region', async (_event, { x, y, width, height }) => {
+      const virtualBounds = captureVirtualBounds ?? getVirtualDesktopBounds()
+      await closeCaptureWindowAndWait()
+
+      const region = resolveRegionSelection(virtualBounds, x, y, width, height)
+      const { globalX, globalY } = region
+      const overlayStyle = overlayStyleFromConfig(appConfig)
+
+      try {
+        const { imageBuffer, cropX, cropY, cropW, cropH, scaleFactor } =
+          await captureDisplayRegion(region)
+        const image = await Jimp.read(imageBuffer)
+
+        const safeCropW = Math.max(1, Math.min(cropW, image.bitmap.width - cropX))
+        const safeCropH = Math.max(1, Math.min(cropH, image.bitmap.height - cropY))
+
+        image.crop(cropX, cropY, safeCropW, safeCropH)
+        const croppedBuffer = await image.getBufferAsync(Jimp.MIME_PNG)
+        const imageBase64 = croppedBuffer.toString('base64')
+
+        const result = await translateRegion(imageBase64)
+
+        if (result.error) {
+          showOverlay(
+            globalX,
+            globalY,
+            width,
+            height,
+            buildErrorBlock(width, height, result.error, overlayStyle)
+          )
+          return
+        }
+
+        if (result.seamless_image_base64) {
+          const dataUrl = `data:image/png;base64,${result.seamless_image_base64}`
+          const blocks = scaleBlocksToDip(
+            buildSeamlessImageBlock(safeCropW, safeCropH, dataUrl),
+            scaleFactor
+          )
+          showOverlay(globalX, globalY, width, height, blocks)
+          return
+        }
+
+        if (appConfig.copy_to_clipboard && result.translated) {
+          clipboard.writeText(result.translated)
+        }
+
+        const displayText =
+          appConfig.show_original && result.original
+            ? `${result.original}\n\n──\n${result.translated}`
+            : result.translated
+        const lineOverlayText = result.translated
+
+        let blocks =
+          result.lines.length > 0
+            ? buildOverlayBlocks(result.lines, lineOverlayText, image, overlayStyle)
+            : buildFullRegionBlock(safeCropW, safeCropH, displayText, image, overlayStyle)
+        blocks = scaleBlocksToDip(blocks, scaleFactor)
+
+        showOverlay(globalX, globalY, width, height, blocks)
+      } catch (err) {
+        console.error(err)
         showOverlay(
-          screenX,
-          screenY,
+          globalX,
+          globalY,
           width,
           height,
-          buildErrorBlock(width, height, result.error)
+          buildErrorBlock(width, height, 'Ошибка перевода', overlayStyle)
         )
-        return
       }
+    })
 
-      if (result.seamless_image_base64) {
-        const dataUrl = `data:image/png;base64,${result.seamless_image_base64}`
-        const blocks = scaleBlocksToDip(
-          buildSeamlessImageBlock(cropW, cropH, dataUrl),
-          scaleFactor
-        )
-        showOverlay(screenX, screenY, width, height, blocks)
-        return
-      }
-
-      if (appConfig.copy_to_clipboard && result.translated) {
-        clipboard.writeText(result.translated)
-      }
-
-      const displayText = appConfig.show_original && result.original
-        ? `${result.original}\n\n──\n${result.translated}`
-        : result.translated
-
-      let blocks =
-        result.lines.length > 0
-          ? buildOverlayBlocks(result.lines, displayText, image)
-          : buildFullRegionBlock(cropW, cropH, displayText, image)
-      blocks = scaleBlocksToDip(blocks, scaleFactor)
-
-      showOverlay(screenX, screenY, width, height, blocks)
-    } catch (err) {
-      console.error(err)
-      showOverlay(
-        screenX,
-        screenY,
-        width,
-        height,
-        buildErrorBlock(width, height, 'Ошибка перевода')
-      )
-    }
+    app.on('activate', function () {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    })
   })
-
-  app.on('activate', function () {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
-  })
-})
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
@@ -373,8 +447,11 @@ app.on('window-all-closed', () => {
   }
 })
 
-app.on('will-quit', () => {
+app.on('before-quit', (event) => {
   unregisterCaptureHotkey()
-  globalShortcut.unregisterAll()
-  stopPythonBackend()
+  if (isBackendRunning() && !backendStopRequested) {
+    event.preventDefault()
+    backendStopRequested = true
+    void stopPythonBackend().finally(() => app.quit())
+  }
 })

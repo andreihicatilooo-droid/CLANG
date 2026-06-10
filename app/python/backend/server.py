@@ -9,7 +9,10 @@ from .handlers import METHODS
 
 DEFAULT_PORT = 17890
 HOST = '127.0.0.1'
+MAX_BODY_BYTES = 64 * 1024 * 1024
+_AUTH_TOKEN = os.environ.get('SCREEN_TRANSLATOR_BACKEND_TOKEN', '')
 
+_httpd = None
 
 class JsonRpcHandler(BaseHTTPRequestHandler):
     server_version = 'ScreenTranslatorBackend/1.0'
@@ -18,34 +21,70 @@ class JsonRpcHandler(BaseHTTPRequestHandler):
         if os.environ.get('SCREEN_TRANSLATOR_BACKEND_QUIET') != '1':
             super().log_message(fmt, *args)
 
+    def _authorized(self) -> bool:
+        origin = self.headers.get('Origin')
+        if origin and origin not in ('null', 'file://'):
+            return False
+
+        if not _AUTH_TOKEN:
+            return True
+
+        auth = self.headers.get('Authorization', '')
+        if auth == f'Bearer {_AUTH_TOKEN}':
+            return True
+        return self.headers.get('X-Backend-Token') == _AUTH_TOKEN
+
+    def _reject_unauthorized(self):
+        self._send_json(401, {
+            'jsonrpc': '2.0',
+            'error': {'code': -32001, 'message': 'Unauthorized'},
+            'id': None,
+        })
+
     def _send_json(self, status, payload):
         body = json.dumps(payload, ensure_ascii=False).encode('utf-8')
         self.send_response(status)
         self.send_header('Content-Type', 'application/json; charset=utf-8')
         self.send_header('Content-Length', str(len(body)))
-        self.send_header('Access-Control-Allow-Origin', '*')
         self.end_headers()
         self.wfile.write(body)
 
-    def do_OPTIONS(self):
-        self.send_response(204)
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
-        self.end_headers()
-
     def do_GET(self):
+        if not self._authorized():
+            self._reject_unauthorized()
+            return
         if self.path.rstrip('/') in ('', '/health', '/rpc'):
             self._send_json(200, METHODS['health']({}))
             return
         self._send_json(404, {'error': 'not found'})
 
     def do_POST(self):
+        if not self._authorized():
+            self._reject_unauthorized()
+            return
         if self.path.rstrip('/') not in ('', '/rpc'):
             self._send_json(404, {'error': 'not found'})
             return
 
-        length = int(self.headers.get('Content-Length', 0))
+        raw_length = self.headers.get('Content-Length', '0')
+        try:
+            length = int(raw_length)
+        except ValueError:
+            self._send_json(400, {
+                'jsonrpc': '2.0',
+                'error': {'code': -32700, 'message': 'Invalid Content-Length'},
+                'id': None,
+            })
+            return
+
+        if length < 0 or length > MAX_BODY_BYTES:
+            self._send_json(413, {
+                'jsonrpc': '2.0',
+                'error': {'code': -32700, 'message': 'Request body too large'},
+                'id': None,
+            })
+            return
+
         raw = self.rfile.read(length) if length else b'{}'
 
         try:
@@ -85,6 +124,14 @@ class JsonRpcHandler(BaseHTTPRequestHandler):
             })
 
 
+def request_shutdown():
+    """Stop the HTTP server from another thread (e.g. shutdown RPC)."""
+    httpd = _httpd
+    if httpd is None:
+        return
+    threading.Thread(target=httpd.shutdown, daemon=True).start()
+
+
 def _write_port_file(port):
     port_file = os.environ.get('SCREEN_TRANSLATOR_PORT_FILE')
     if not port_file:
@@ -98,6 +145,7 @@ def _write_port_file(port):
 
 
 def main():
+    global _httpd
     port = int(os.environ.get('SCREEN_TRANSLATOR_BACKEND_PORT', DEFAULT_PORT))
 
     # Ensure imports resolve when launched as script.
@@ -109,6 +157,7 @@ def main():
     config.load()
 
     httpd = ThreadingHTTPServer((HOST, port), JsonRpcHandler)
+    _httpd = httpd
     _write_port_file(port)
     print(f'[backend] listening on http://{HOST}:{port}', flush=True)
 
@@ -118,6 +167,7 @@ def main():
         pass
     finally:
         httpd.server_close()
+        _httpd = None
 
 
 if __name__ == '__main__':

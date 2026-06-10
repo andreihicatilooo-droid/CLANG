@@ -14,6 +14,25 @@ export interface ScreenTranslatorAPI {
   }>
   oauthStatus: () => Promise<{ authorized: boolean }>
   oauthLogout: () => Promise<{ authorized: boolean }>
+  validateGeminiApiKey: (
+    apiKey: string,
+    model?: string
+  ) => Promise<{ valid: boolean; message: string }>
+  listGeminiModels: (
+    apiKey: string
+  ) => Promise<{ models: { id: string; label: string }[]; recommended: string; error: string | null }>
+  scanAiStudio: (
+    apiKey: string,
+    currentModel?: string,
+    modelAuto?: boolean
+  ) => Promise<{
+    valid: boolean
+    models: { id: string; label: string }[]
+    recommended: string
+    selected: string
+    message: string
+  }>
+  openExternal: (url: string) => Promise<void>
   onConfigChanged: (callback: (config: ScreenTranslatorConfig) => void) => () => void
 }
 

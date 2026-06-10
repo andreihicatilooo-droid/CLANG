@@ -1,11 +1,13 @@
 import { ChildProcess, spawn } from 'child_process'
+import { randomBytes } from 'crypto'
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { app } from 'electron'
 import { is } from '@electron-toolkit/utils'
-import { setBackendPort, waitForBackend } from './backendClient'
+import { setBackendPort, setBackendToken, shutdownBackend, waitForBackend } from './backendClient'
 
 const DEFAULT_PORT = 17890
+const SHUTDOWN_GRACE_MS = 500
 
 let backendProcess: ChildProcess | null = null
 
@@ -39,13 +41,16 @@ export async function startPythonBackend(): Promise<number> {
   const { cmd, args, cwd } = resolvePythonExecutable(pythonDir)
 
   const port = DEFAULT_PORT
+  const token = randomBytes(32).toString('hex')
   setBackendPort(port)
+  setBackendToken(token)
 
   backendProcess = spawn(cmd, args, {
     cwd,
     env: {
       ...process.env,
       SCREEN_TRANSLATOR_BACKEND_PORT: String(port),
+      SCREEN_TRANSLATOR_BACKEND_TOKEN: token,
       SCREEN_TRANSLATOR_BACKEND_QUIET: is.dev ? '0' : '1'
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -60,6 +65,11 @@ export async function startPythonBackend(): Promise<number> {
     console.error('[backend]', chunk.toString().trim())
   })
 
+  backendProcess.on('error', (err) => {
+    console.error('[backend] spawn failed:', err)
+    backendProcess = null
+  })
+
   backendProcess.on('exit', (code) => {
     console.warn(`[backend] exited with code ${code}`)
     backendProcess = null
@@ -69,8 +79,26 @@ export async function startPythonBackend(): Promise<number> {
   return port
 }
 
-export function stopPythonBackend(): void {
-  if (!backendProcess) return
-  backendProcess.kill()
-  backendProcess = null
+export async function stopPythonBackend(): Promise<void> {
+  const proc = backendProcess
+  if (!proc) return
+
+  try {
+    await shutdownBackend()
+    await new Promise((resolve) => setTimeout(resolve, SHUTDOWN_GRACE_MS))
+  } catch {
+    // Backend may already be unreachable.
+  }
+
+  if (proc.exitCode === null && !proc.killed) {
+    proc.kill()
+  }
+
+  if (backendProcess === proc) {
+    backendProcess = null
+  }
+}
+
+export function isBackendRunning(): boolean {
+  return backendProcess !== null
 }

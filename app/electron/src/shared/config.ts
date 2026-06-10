@@ -14,6 +14,7 @@ export interface ScreenTranslatorConfig {
   engine: 'google' | 'gemini_api' | 'gemini_oauth'
   gemini_api_key: string
   gemini_model: string
+  gemini_model_auto: boolean
 
   overlay_alpha: number
   overlay_font_size: number
@@ -40,6 +41,7 @@ export const CONFIG_DEFAULTS: ScreenTranslatorConfig = {
   engine: 'google',
   gemini_api_key: '',
   gemini_model: 'gemini-2.5-flash',
+  gemini_model_auto: true,
 
   overlay_alpha: 0.94,
   overlay_font_size: 11,
@@ -66,15 +68,22 @@ export const TARGET_LANGS: { label: string; code: string }[] = [
   { label: 'Türkçe', code: 'tr' }
 ]
 
+export const AI_STUDIO_KEY_URL = 'https://aistudio.google.com/apikey'
+
 export const ENGINES: { id: ScreenTranslatorConfig['engine']; label: string; hint: string }[] = [
-  { id: 'google', label: 'Google', hint: 'Windows OCR + Google Translate' },
-  { id: 'gemini_api', label: 'Gemini · API key', hint: 'Vision translation via API key' },
-  { id: 'gemini_oauth', label: 'Gemini · OAuth', hint: 'Sign in with Google account' }
+  { id: 'google', label: 'Google Translate', hint: 'Windows OCR + бесплатный перевод текста' },
+  {
+    id: 'gemini_api',
+    label: 'Google AI Studio',
+    hint: 'Gemini Vision через API-ключ из aistudio.google.com'
+  },
+  { id: 'gemini_oauth', label: 'Gemini · OAuth', hint: 'Вход через Google-аккаунт' }
 ]
 
 export const GEMINI_MODELS = [
   'gemini-2.5-flash',
   'gemini-2.5-pro',
+  'gemini-2.5-flash-lite',
   'gemini-2.0-flash',
   'gemini-1.5-flash'
 ]
@@ -95,6 +104,7 @@ export function hotkeyToAccelerator(cfg: ScreenTranslatorConfig): string {
   if (cfg.hotkey_alt) parts.push('Alt')
   if (cfg.hotkey_shift) parts.push('Shift')
   if (cfg.hotkey_win) parts.push('Super')
+  if (parts.length === 0) parts.push('CommandOrControl')
   parts.push((cfg.hotkey_key || 'T').toUpperCase())
   return parts.join('+')
 }

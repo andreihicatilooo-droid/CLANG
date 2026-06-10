@@ -17,6 +17,27 @@ const api = {
   }> => ipcRenderer.invoke('oauth-poll'),
   oauthStatus: (): Promise<{ authorized: boolean }> => ipcRenderer.invoke('oauth-status'),
   oauthLogout: (): Promise<{ authorized: boolean }> => ipcRenderer.invoke('oauth-logout'),
+  validateGeminiApiKey: (
+    apiKey: string,
+    model?: string
+  ): Promise<{ valid: boolean; message: string }> =>
+    ipcRenderer.invoke('validate-gemini-api-key', apiKey, model),
+  listGeminiModels: (
+    apiKey: string
+  ): Promise<{ models: { id: string; label: string }[]; recommended: string; error: string | null }> =>
+    ipcRenderer.invoke('list-gemini-models', apiKey),
+  scanAiStudio: (
+    apiKey: string,
+    currentModel?: string,
+    modelAuto?: boolean
+  ): Promise<{
+    valid: boolean
+    models: { id: string; label: string }[]
+    recommended: string
+    selected: string
+    message: string
+  }> => ipcRenderer.invoke('scan-ai-studio', apiKey, currentModel, modelAuto),
+  openExternal: (url: string): Promise<void> => ipcRenderer.invoke('open-external', url),
   onConfigChanged: (callback: (config: ScreenTranslatorConfig) => void): (() => void) => {
     const handler = (_event: unknown, config: ScreenTranslatorConfig): void => callback(config)
     ipcRenderer.on('config-changed', handler)

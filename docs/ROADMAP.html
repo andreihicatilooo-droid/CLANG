@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Screen Translator — Roadmap mindmap</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: #0f1117;
+      color: #e8eaed;
+    }
+    header {
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid #2a2d36;
+    }
+    h1 { margin: 0; font-size: 1.25rem; font-weight: 600; }
+    .meta { margin: 0.4rem 0 0; color: #9aa0a6; font-size: 0.875rem; }
+    code { background: #1e2130; padding: 0.1rem 0.35rem; border-radius: 4px; }
+    #diagram {
+      min-height: calc(100vh - 72px);
+      padding: 1.5rem;
+      overflow: auto;
+    }
+    .mermaid { display: flex; justify-content: center; }
+    #error {
+      display: none;
+      margin: 1rem 1.5rem;
+      padding: 1rem;
+      background: #3b1f1f;
+      border: 1px solid #7a3030;
+      border-radius: 8px;
+      color: #f5c2c2;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Roadmap — Screen Translator</h1>
+    <p class="meta">Сгенерировано: 2026-06-10 · Обновить: <code>npm run roadmap</code> · Открыть: <code>npm run roadmap:view</code></p>
+  </header>
+  <div id="error"></div>
+  <div id="diagram"><pre class="mermaid">mindmap
+  root((Screen Translator))
+    "version 1 0 0"
+    "Electron UI"
+      "Main process"
+        "backendClient"
+        "displayCapture"
+        "hotkeyManager"
+        "index"
+        "overlayHelpers"
+        "pythonManager"
+      "Renderer"
+        "App"
+        "CaptureScreen"
+        "OverlayScreen"
+        "SettingsScreen"
+      "Preload"
+        "preload bridge"
+      "Shared"
+        "config"
+    "Backend JSON-RPC"
+      "RPC localhost"
+      "get_config"
+      "get_ocr_languages"
+      "health"
+      "oauth_logout"
+      "oauth_poll"
+      "oauth_start"
+      "oauth_status"
+      "save_config"
+      "shutdown"
+      "translate_region"
+    "Python app"
+      "capture"
+      "config"
+      "hotkey"
+      "inpainting"
+      "oauth"
+      "ocr"
+      "settings_ui"
+      "translators"
+      "tray"
+    "Backend package"
+      "__main__"
+      "handlers"
+      "server"
+    "Движки перевода"
+      "google"
+      "gemini_api"
+      "gemini_oauth"
+    "Standalone"
+      "screen_translator tkinter"
+    "Сборка"
+      "PyInstaller backend exe"
+      "electron-builder Windows"
+      "build_backend spec"
+    "Конфиг"
+      "APPDATA config json"
+      "google_token json OAuth"
+    "Планы"
+      "пока нет cursor plans"
+    "Git"
+      "ветка main"
+      "commit 94cc7d5"
+      "изменения не закоммичены"</pre></div>
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs'
+    const err = document.getElementById('error')
+    try {
+      mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'loose' })
+      const src = document.querySelector('#diagram pre.mermaid')?.textContent?.trim() || ''
+      await mermaid.parse(src)
+      await mermaid.run({ nodes: [document.querySelector('#diagram pre.mermaid')] })
+    } catch (e) {
+      err.style.display = 'block'
+      err.textContent = 'Не удалось отрисовать mindmap: ' + (e?.message || e)
+    }
+  </script>
+</body>
+</html>

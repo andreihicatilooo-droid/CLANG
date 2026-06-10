@@ -1,0 +1,34 @@
+{
+  "name": "screen-translator",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Screen Translator — OCR и перевод области экрана (Electron + Python, Windows)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/andreihicatilooo-droid/CLANG.git"
+  },
+  "homepage": "https://github.com/andreihicatilooo-droid/CLANG#readme",
+  "bugs": {
+    "url": "https://github.com/andreihicatilooo-droid/CLANG/issues"
+  },
+  "keywords": [
+    "screen-translator",
+    "ocr",
+    "translation",
+    "electron",
+    "python",
+    "windows",
+    "winrt",
+    "gemini",
+    "inpainting"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "roadmap": "node scripts/generate-roadmap-mindmap.mjs",
+    "roadmap:view": "node scripts/generate-roadmap-mindmap.mjs --open",
+    "commit:logical": "node scripts/commit-logical.mjs"
+  }
+}

@@ -26,15 +26,25 @@ export interface OAuthPollResult {
 }
 
 let backendPort = DEFAULT_PORT
+let backendToken = ''
 
 export function setBackendPort(port: number): void {
   backendPort = port
 }
 
+export function setBackendToken(token: string): void {
+  backendToken = token
+}
+
 async function rpc<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (backendToken) {
+    headers.Authorization = `Bearer ${backendToken}`
+  }
+
   const res = await fetch(`http://127.0.0.1:${backendPort}/rpc`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({ jsonrpc: '2.0', method, params, id: Date.now() })
   })
 
@@ -104,4 +114,58 @@ export async function oauthStatus(): Promise<{ authorized: boolean }> {
 
 export async function oauthLogout(): Promise<{ authorized: boolean }> {
   return rpc('oauth_logout')
+}
+
+export interface ValidateApiKeyResult {
+  valid: boolean
+  message: string
+}
+
+export interface GeminiModelOption {
+  id: string
+  label: string
+}
+
+export interface ListGeminiModelsResult {
+  models: GeminiModelOption[]
+  recommended: string
+  error: string | null
+}
+
+export interface ScanAiStudioResult {
+  valid: boolean
+  models: GeminiModelOption[]
+  recommended: string
+  selected: string
+  message: string
+}
+
+export async function listGeminiModels(apiKey: string): Promise<ListGeminiModelsResult> {
+  return rpc<ListGeminiModelsResult>('list_gemini_models', { api_key: apiKey })
+}
+
+export async function scanAiStudio(
+  apiKey: string,
+  currentModel?: string,
+  modelAuto = true
+): Promise<ScanAiStudioResult> {
+  return rpc<ScanAiStudioResult>('scan_ai_studio', {
+    api_key: apiKey,
+    current_model: currentModel ?? '',
+    model_auto: modelAuto
+  })
+}
+
+export async function validateGeminiApiKey(
+  apiKey: string,
+  model?: string
+): Promise<ValidateApiKeyResult> {
+  return rpc<ValidateApiKeyResult>('validate_gemini_api_key', {
+    api_key: apiKey,
+    model: model ?? ''
+  })
+}
+
+export async function shutdownBackend(): Promise<{ status: string }> {
+  return rpc('shutdown')
 }

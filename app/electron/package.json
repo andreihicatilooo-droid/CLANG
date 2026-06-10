@@ -17,7 +17,7 @@
     "postinstall": "electron-builder install-app-deps",
     "build:backend": "node scripts/build-backend.mjs",
     "build:unpack": "npm run build:backend && npm run build && electron-builder --dir",
-    "build:win": "npm run build:backend && npm run build && electron-builder --win",
+    "build:win": "npm run build:backend && npm run build && electron-builder --win -p never",
     "build:mac": "electron-vite build && electron-builder --mac",
     "build:linux": "electron-vite build && electron-builder --linux"
   },

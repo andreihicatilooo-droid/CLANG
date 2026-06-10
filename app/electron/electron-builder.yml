@@ -41,6 +41,5 @@ linux:
 appImage:
   artifactName: ${name}-${version}.${ext}
 npmRebuild: false
-publish:
-  provider: generic
-  url: https://example.com/auto-updates
+# Публикация — через GitHub Release (workflow .github/workflows/release.yml)
+publish: null

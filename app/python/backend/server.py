@@ -154,7 +154,14 @@ def main():
         sys.path.insert(0, root)
 
     from app import config
-    config.load()
+    cfg = config.load()
+    if cfg.get('engine') == 'local_nllb':
+        try:
+            from app import nllb_local
+            nllb_local.warmup(async_=True)
+            print('[backend] warming up local NLLB model…', flush=True)
+        except Exception:
+            pass
 
     httpd = ThreadingHTTPServer((HOST, port), JsonRpcHandler)
     _httpd = httpd

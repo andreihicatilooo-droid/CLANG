@@ -16,6 +16,12 @@ DEFAULTS = {
     'hotkey_shift': False,
     'hotkey_win':   False,
     'hotkey_key':   'T',
+    'hotkeys':      None,
+    'hotkey_modes_migrated': False,
+
+    # Live preview during capture (Electron)
+    'live_preview_enabled':     True,
+    'live_preview_debounce_ms': 750,
 
     # Languages
     'ocr_lang':     'en-US',        # Windows OCR BCP-47 tag
@@ -23,14 +29,18 @@ DEFAULTS = {
     'target_lang':  'ru',
 
     # Engine (gemini_api = Google AI Studio API key)
-    'engine':       'google',       # google | gemini_api | gemini_oauth
+    'engine':       'google',       # google | local_nllb | gcp_local | gemini_api | gemini_oauth
     'gemini_api_key': '',           # https://aistudio.google.com/apikey
     'gemini_model':   'gemini-2.5-flash',
     'gemini_model_auto': True,
 
+    # GCP Cloud Run local NLLB translator
+    'gcp_local_url':     '',
+    'gcp_local_api_key': '',
+
     # Overlay appearance
     'overlay_alpha':       0.94,
-    'overlay_font_size':   11,
+    'overlay_font_size':   14,
     'overlay_auto_close':  30,      # seconds, 0 = never
     'overlay_theme':       'dark',  # dark | light
 
@@ -43,6 +53,92 @@ DEFAULTS = {
 
 _lock = threading.Lock()
 _cache = None
+MAX_HOTKEYS = 5
+
+
+def _legacy_hotkey(cfg):
+    return {
+        'hotkey_ctrl':  bool(cfg.get('hotkey_ctrl', DEFAULTS['hotkey_ctrl'])),
+        'hotkey_alt':   bool(cfg.get('hotkey_alt', DEFAULTS['hotkey_alt'])),
+        'hotkey_shift': bool(cfg.get('hotkey_shift', DEFAULTS['hotkey_shift'])),
+        'hotkey_win':   bool(cfg.get('hotkey_win', DEFAULTS['hotkey_win'])),
+        'hotkey_key':   (cfg.get('hotkey_key') or DEFAULTS['hotkey_key'])[0].upper(),
+    }
+
+
+def _normalize_hotkeys(cfg):
+    hotkeys = cfg.get('hotkeys')
+    if not hotkeys:
+        hotkeys = [_legacy_hotkey(cfg)]
+    else:
+        normalized = []
+        for item in hotkeys[:MAX_HOTKEYS]:
+            if not isinstance(item, dict):
+                continue
+            binding = {
+                'hotkey_ctrl':  bool(item.get('hotkey_ctrl', False)),
+                'hotkey_alt':   bool(item.get('hotkey_alt', False)),
+                'hotkey_shift': bool(item.get('hotkey_shift', False)),
+                'hotkey_win':   bool(item.get('hotkey_win', False)),
+                'hotkey_key':   (item.get('hotkey_key') or 'T')[0].upper(),
+            }
+            if item.get('mode') in ('live', 'window'):
+                binding['mode'] = item['mode']
+            normalized.append(binding)
+        hotkeys = normalized or [_legacy_hotkey(cfg)]
+
+    primary = hotkeys[0]
+    cfg['hotkeys'] = hotkeys
+    cfg['hotkey_ctrl'] = primary['hotkey_ctrl']
+    cfg['hotkey_alt'] = primary['hotkey_alt']
+    cfg['hotkey_shift'] = primary['hotkey_shift']
+    cfg['hotkey_win'] = primary['hotkey_win']
+    cfg['hotkey_key'] = primary['hotkey_key']
+    return cfg
+
+
+def _binding_signature(binding):
+    return (
+        bool(binding.get('hotkey_ctrl')),
+        bool(binding.get('hotkey_alt')),
+        bool(binding.get('hotkey_shift')),
+        bool(binding.get('hotkey_win')),
+        (binding.get('hotkey_key') or 'T')[0].upper(),
+    )
+
+
+def _migrate_hotkey_modes(cfg):
+    """Одноразово добавляет комбинации Ctrl+Alt+A (live) и Ctrl+Alt+D (window)."""
+    if cfg.get('hotkey_modes_migrated'):
+        return
+    hotkeys = cfg['hotkeys']
+    taken = {_binding_signature(b) for b in hotkeys}
+    for key, mode in (('A', 'live'), ('D', 'window')):
+        binding = {
+            'hotkey_ctrl':  True,
+            'hotkey_alt':   True,
+            'hotkey_shift': False,
+            'hotkey_win':   False,
+            'hotkey_key':   key,
+            'mode':         mode,
+        }
+        signature = _binding_signature(binding)
+        if signature in taken or len(hotkeys) >= MAX_HOTKEYS:
+            continue
+        hotkeys.append(binding)
+        taken.add(signature)
+    cfg['hotkey_modes_migrated'] = True
+
+
+def _normalize(cfg):
+    data = dict(DEFAULTS)
+    data.update(cfg)
+    _normalize_hotkeys(data)
+    _migrate_hotkey_modes(data)
+    data['live_preview_enabled'] = bool(data.get('live_preview_enabled', True))
+    debounce = int(data.get('live_preview_debounce_ms', 750))
+    data['live_preview_debounce_ms'] = max(300, min(2000, debounce))
+    return data
 
 
 def load():
@@ -58,7 +154,7 @@ def load():
                     data.update(json.load(f))
             except Exception:
                 pass
-        _cache = data
+        _cache = _normalize(data)
         return _cache
 
 
@@ -68,6 +164,7 @@ def save(updates=None):
         cfg = _cache if _cache is not None else dict(DEFAULTS)
         if updates:
             cfg.update(updates)
+        cfg = _normalize(cfg)
         os.makedirs(CONFIG_DIR, exist_ok=True)
         fd, tmp_path = tempfile.mkstemp(dir=CONFIG_DIR, suffix='.json')
         try:

@@ -37,7 +37,9 @@ _TARGET_LANGS = [
 ]
 
 _ENGINES = [
+    ('local_nllb',   'Локальный NLLB', 'Самый быстрый. Windows OCR + NLLB на ПК.'),
     ('google',       'Google',         'Бесплатно. Windows OCR + Google Translate.'),
+    ('gcp_local',    'GCP Cloud',      'Windows OCR + NLLB на Cloud Run (сеть).'),
     ('gemini_api',   'Google AI Studio', 'Gemini Vision. Ключ: aistudio.google.com/apikey'),
     ('gemini_oauth', 'Gemini · OAuth', 'Вход через Google-аккаунт.'),
 ]
@@ -240,6 +242,10 @@ def open_settings(root, on_save):
     v_shift = tk.BooleanVar(value=cfg['hotkey_shift'])
     v_win   = tk.BooleanVar(value=cfg['hotkey_win'])
     v_key   = tk.StringVar(value=cfg['hotkey_key'])
+    extra_hotkeys = list(cfg.get('hotkeys') or [])[1:]
+
+    v_live_preview = tk.BooleanVar(value=cfg.get('live_preview_enabled', True))
+    v_live_debounce = tk.IntVar(value=cfg.get('live_preview_debounce_ms', 750))
 
     available_ocr = ocr.available_languages() or ['en-US', 'ru-RU']
     if cfg['ocr_lang'] not in available_ocr:
@@ -256,6 +262,8 @@ def open_settings(root, on_save):
     v_api      = tk.StringVar(value=cfg['gemini_api_key'])
     v_model    = tk.StringVar(value=cfg['gemini_model'])
     v_show_api = tk.BooleanVar(value=False)
+    v_gcp_url  = tk.StringVar(value=cfg.get('gcp_local_url', ''))
+    v_gcp_key  = tk.StringVar(value=cfg.get('gcp_local_api_key', ''))
 
     v_theme = tk.StringVar(value=cfg['overlay_theme'])
     v_font  = tk.IntVar(value=cfg['overlay_font_size'])
@@ -363,12 +371,21 @@ def open_settings(root, on_save):
     tk.Label(keys_frame, text='+', bg=C['mantle'], fg=C['muted'],
              font=FONT).pack(side='left', padx=6)
     Entry(keys_frame, v_key, width=3).pack(side='left')
+    if extra_hotkeys:
+        tk.Label(s,
+                 text=f'Дополнительно: {len(extra_hotkeys)} комб. (полная настройка в Electron)',
+                 bg=C['mantle'], fg=C['muted'], font=('Segoe UI', 9)).pack(anchor='w', pady=(8, 0))
 
     s = section(p_general, 'Язык')
     Combo(row(s, 'Перевод на', 'Целевой язык'),
           v_target, [c for _, c in _TARGET_LANGS], width=18).pack()
 
     s = section(p_general, 'Поведение')
+    Switch(row(s, 'Перевод при выделении (Electron)'), v_live_preview).pack()
+    debounce_row = row(s, 'Задержка перевода, мс', '300–2000, только Electron')
+    tk.Scale(debounce_row, from_=300, to=2000, resolution=50, orient='horizontal',
+             variable=v_live_debounce, bg=C['mantle'], fg=C['text'],
+             highlightthickness=0, troughcolor=C['surface1']).pack(fill='x')
     Switch(row(s, 'Копировать перевод в буфер обмена'), v_clip).pack()
     Switch(row(s, 'Показывать оригинал', 'Над переводом'), v_orig).pack()
     Switch(row(s, 'Запускать свёрнутым в трей'), v_min).pack()
@@ -429,6 +446,12 @@ def open_settings(root, on_save):
     Combo(row(gemini_inner, 'Модель'),
           v_model, _GEMINI_MODELS, width=22).pack()
 
+    # GCP local section
+    gcp_section = tk.Frame(p_engine, bg=C['crust'])
+    gcp_inner = section(gcp_section, 'GCP Cloud Run (NLLB)')
+    Entry(row(gcp_inner, 'URL сервиса', 'Cloud Run endpoint'), v_gcp_url, width=36).pack()
+    Entry(row(gcp_inner, 'API-ключ', 'X-API-Key из deploy.ps1'), v_gcp_key, show='•', width=36).pack()
+
     # OAuth section
     oauth_section = tk.Frame(p_engine, bg=C['crust'])
     oauth_inner = section(oauth_section, 'OAuth')
@@ -468,13 +491,16 @@ def open_settings(root, on_save):
     def update_engine_visibility():
         eng = v_engine.get()
         gemini_section.pack_forget()
+        gcp_section.pack_forget()
         oauth_section.pack_forget()
         ocr_section.pack_forget()
         if eng in ('gemini_api', 'gemini_oauth'):
             gemini_section.pack(fill='x', pady=(8, 0))
+        if eng == 'gcp_local':
+            gcp_section.pack(fill='x', pady=(8, 0))
         if eng == 'gemini_oauth':
             oauth_section.pack(fill='x', pady=(8, 0))
-        if eng == 'google':
+        if eng in ('google', 'gcp_local', 'local_nllb'):
             ocr_section.pack(fill='x', pady=(8, 0))
 
     update_engine_visibility()
@@ -549,12 +575,18 @@ def open_settings(root, on_save):
     hk_lbl.pack(side='left')
 
     def save_and_close():
-        config.save({
+        primary_hotkey = {
             'hotkey_ctrl':  v_ctrl.get(),
             'hotkey_alt':   v_alt.get(),
             'hotkey_shift': v_shift.get(),
             'hotkey_win':   v_win.get(),
             'hotkey_key':   (v_key.get() or 'T')[0].upper(),
+        }
+        config.save({
+            **primary_hotkey,
+            'hotkeys': [primary_hotkey, *extra_hotkeys],
+            'live_preview_enabled': v_live_preview.get(),
+            'live_preview_debounce_ms': int(v_live_debounce.get()),
             'ocr_lang':     v_ocr.get(),
             'target_lang':  v_target.get(),
             'copy_to_clipboard': v_clip.get(),
@@ -563,6 +595,8 @@ def open_settings(root, on_save):
             'engine':         v_engine.get(),
             'gemini_api_key': v_api.get().strip(),
             'gemini_model':   v_model.get(),
+            'gcp_local_url':     v_gcp_url.get().strip(),
+            'gcp_local_api_key': v_gcp_key.get().strip(),
             'overlay_theme':      v_theme.get(),
             'overlay_font_size':  int(v_font.get()),
             'overlay_alpha':      round(float(v_alpha.get()), 2),

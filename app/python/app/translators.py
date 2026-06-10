@@ -1,6 +1,8 @@
 """Translation engines.
 
 Google free   : Windows OCR -> deep-translator (text-only).
+Local NLLB    : Windows OCR -> on-device NLLB (fastest, no network).
+GCP local     : Windows OCR -> NLLB on Cloud Run (network latency).
 Gemini API key: Gemini Vision (image -> translation in one shot).
 Gemini OAuth  : Same, via OAuth bearer token.
 """
@@ -11,7 +13,7 @@ import os
 import urllib.request
 import urllib.error
 
-from . import config
+from . import api_validation, config
 
 
 class TranslationError(Exception):
@@ -28,6 +30,51 @@ _LANG_NAMES = {
 
 def _lang_name(code):
     return _LANG_NAMES.get(code, code)
+
+
+# ── Local NLLB (on-device) ────────────────────────────────────────────────
+def _translate_local_nllb_text(text, source, target, ocr_lang=None):
+    from . import nllb_local
+    try:
+        return nllb_local.translate(text, source, target, ocr_lang)
+    except Exception as e:
+        raise TranslationError(f'Local NLLB: {e}')
+
+
+# ── GCP local (NLLB on Cloud Run) ─────────────────────────────────────────
+def _translate_gcp_local_text(text, source, target, ocr_lang=None):
+    base_url = (config.get('gcp_local_url') or '').strip().rstrip('/')
+    if not base_url:
+        raise TranslationError('Не задан URL GCP Translate (Настройки → Языки).')
+
+    api_key = (config.get('gcp_local_api_key') or '').strip()
+    body = json.dumps({
+        'text': text,
+        'source_lang': source or 'auto',
+        'target_lang': target,
+        'ocr_lang': ocr_lang,
+    }).encode('utf-8')
+
+    headers = {'Content-Type': 'application/json'}
+    if api_key:
+        headers['X-API-Key'] = api_key
+
+    req = urllib.request.Request(f'{base_url}/v1/translate', data=body, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+    except urllib.error.HTTPError as e:
+        if e.code == 401:
+            raise TranslationError('GCP Translate: неверный API-ключ')
+        err = e.read().decode('utf-8', errors='ignore')
+        raise TranslationError(f'GCP HTTP {e.code}: {err[:400]}')
+    except Exception as e:
+        raise TranslationError(f'GCP Translate: {e}')
+
+    translated = (data.get('translated') or '').strip()
+    if not translated:
+        raise TranslationError('GCP Translate: пустой ответ')
+    return translated
 
 
 # ── Google free ────────────────────────────────────────────────────────────
@@ -193,7 +240,7 @@ def translate_image(pil_image, lines=None):
 
         return translated, original
 
-    # Google route: Windows OCR -> deep-translator
+    # OCR + text route: google (free) or gcp_local (Cloud Run NLLB)
     if lines is not None:
         original = _lines_to_text(lines)
     elif seamless and lines_data is not None:
@@ -208,8 +255,13 @@ def translate_image(pil_image, lines=None):
     if not original:
         return '', None
 
-    translated = _translate_google_text(
-        original, config.get('source_lang') or 'auto', target)
+    source = config.get('source_lang') or 'auto'
+    if engine == 'local_nllb':
+        translated = _translate_local_nllb_text(original, source, target, ocr_lang)
+    elif engine == 'gcp_local':
+        translated = _translate_gcp_local_text(original, source, target, ocr_lang)
+    else:
+        translated = _translate_google_text(original, source, target)
 
     if seamless and lines_data:
         from .inpainting import draw_translated_seamless

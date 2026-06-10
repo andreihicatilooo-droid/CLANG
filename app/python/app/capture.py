@@ -63,8 +63,9 @@ class RegionSelector:
 
 
 # ── Translation overlay ────────────────────────────────────────────────────
-def show_overlay(root, x1, y1, x2, y2, text_or_img, error=False, original=None):
+def show_overlay(root, x1, y1, x2, y2, text_or_img, error=False, original=None, source_image=None):
     from PIL import Image, ImageTk
+    from .overlay_adaptive import adaptive_overlay_colors, sample_region_stats
     is_image = isinstance(text_or_img, Image.Image)
     auto_close = int(config.get('overlay_auto_close') or 30)
 
@@ -87,16 +88,28 @@ def show_overlay(root, x1, y1, x2, y2, text_or_img, error=False, original=None):
     text = text_or_img
     PAD = 10
     w = max(x2 - x1, 260)
-    font_size  = int(config.get('overlay_font_size') or 11)
-    alpha      = float(config.get('overlay_alpha') or 0.94)
-    theme      = config.get('overlay_theme') or 'dark'
+    alpha = float(config.get('overlay_alpha') or 0.94)
+    base_font = int(config.get('overlay_font_size') or 11)
 
-    if theme == 'light':
-        BG, FG, BORD, MUTED = '#f9f9fb', '#1e1e2e', '#bcc0d4', '#7c7f93'
-    else:
-        BG, FG, BORD, MUTED = '#1e1e2e', '#cdd6f4', '#45475a', '#9399b2'
     if error:
-        BG, FG, BORD = '#2e1a1a', '#f38ba8', '#7f1d1d'
+        BG, FG, BORD, MUTED = '#2e1a1a', '#f38ba8', '#7f1d1d', '#f38ba8'
+        font_size = max(11, base_font)
+    elif source_image is not None:
+        stats = sample_region_stats(source_image, 0, 0, source_image.size[0], source_image.size[1])
+        adaptive = adaptive_overlay_colors(stats, alpha=alpha)
+        BG = '#%02x%02x%02x' % adaptive['bg']
+        FG = adaptive['fg']
+        BORD = '#%02x%02x%02x' % tuple(max(0, c - 20) for c in adaptive['bg'])
+        MUTED = FG
+        font_size = adaptive['font_size']
+        alpha = adaptive['alpha']
+    else:
+        theme = config.get('overlay_theme') or 'dark'
+        if theme == 'light':
+            BG, FG, BORD, MUTED = '#f9f9fb', '#1e1e2e', '#bcc0d4', '#7c7f93'
+        else:
+            BG, FG, BORD, MUTED = '#1e1e2e', '#cdd6f4', '#45475a', '#9399b2'
+        font_size = base_font
 
     full_text = text if not original else f'{original}\n\n──\n{text}'
 
@@ -166,7 +179,7 @@ def process(root, x1, y1, x2, y2, img):
             except Exception:
                 pass
 
-        root.after(0, show_overlay, root, x1, y1, x2, y2,
-                   translated, False, original)
+        root.after(0, lambda: show_overlay(
+            root, x1, y1, x2, y2, translated, False, original, img))
 
     threading.Thread(target=worker, daemon=True).start()

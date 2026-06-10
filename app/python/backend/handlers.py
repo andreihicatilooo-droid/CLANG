@@ -5,7 +5,7 @@ import threading
 
 from PIL import Image
 
-from app import api_validation, config, oauth, ocr, translators
+from app import api_validation, config, gcp_validation, oauth, ocr, translators
 
 VERSION = '1.0.0'
 OAUTH_TIMEOUT_SEC = 120
@@ -122,6 +122,13 @@ def handle_validate_gemini_api_key(params):
     return api_validation.validate_gemini_api_key(api_key, model)
 
 
+def handle_validate_gcp_local(params):
+    return gcp_validation.validate_gcp_local(
+        base_url=params.get('url'),
+        api_key=params.get('api_key'),
+    )
+
+
 def handle_translate_region(params):
     image_b64 = params.get('image_base64')
     if not image_b64:
@@ -183,4 +190,5 @@ METHODS = {
     'validate_gemini_api_key': handle_validate_gemini_api_key,
     'list_gemini_models': handle_list_gemini_models,
     'scan_ai_studio': handle_scan_ai_studio,
+    'validate_gcp_local': handle_validate_gcp_local,
 }

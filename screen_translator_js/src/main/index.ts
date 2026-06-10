@@ -1,6 +1,6 @@
 import { appendFileSync } from 'fs'
 import { app, BrowserWindow, ipcMain, screen, Tray, Menu, globalShortcut } from 'electron'
-import { join } from 'path'
+import { join, resolve } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import screenshot from 'screenshot-desktop'
@@ -27,7 +27,7 @@ let overlayCloseTimer: ReturnType<typeof setTimeout> | null = null
 let overlayPayload: { blocks: OverlayBlock[]; width: number; height: number } | null = null
 
 const OVERLAY_AUTO_CLOSE_MS = 30_000
-const DEBUG_LOG_PATH = join(__dirname, '../../../debug-3dad4a.log')
+const DEBUG_LOG_PATH = resolve(__dirname, '../../../debug-3dad4a.log')
 
 // #region agent log
 function debugLog(
@@ -105,7 +105,7 @@ function createTray(): void {
       }
     }
   ])
-  tray.setToolTip('Screen Translator')
+  tray.setToolTip('Screen Translator (overlay-v3)')
   tray.setContextMenu(contextMenu)
   tray.on('click', () => mainWindow?.show())
 }
@@ -246,6 +246,10 @@ function regionToScreen(x: number, y: number): { screenX: number; screenY: numbe
 }
 
 app.whenReady().then(() => {
+  // #region agent log
+  debugLog('index.ts:startup', 'app ready', { buildMarker: 'overlay-v3' }, 'A')
+  // #endregion
+
   electronApp.setAppUserModelId('com.electron')
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)

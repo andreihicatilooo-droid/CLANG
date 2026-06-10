@@ -12,6 +12,7 @@ interface OverlayBlock {
   fontWeight?: number
   textShadow?: string
   imageUrl?: string
+  layout?: 'flow' | 'center'
 }
 
 export default function OverlayScreen(): React.JSX.Element {
@@ -52,7 +53,9 @@ export default function OverlayScreen(): React.JSX.Element {
           ) : (
             <div
               key={`${block.x}-${block.y}-${index}`}
-              className="overlay-block"
+              className={
+                block.layout === 'flow' ? 'overlay-block overlay-block--flow' : 'overlay-block'
+              }
               style={{
                 left: block.x,
                 top: block.y,

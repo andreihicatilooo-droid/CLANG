@@ -245,7 +245,7 @@ def open_settings(root, on_save):
     extra_hotkeys = list(cfg.get('hotkeys') or [])[1:]
 
     v_live_preview = tk.BooleanVar(value=cfg.get('live_preview_enabled', True))
-    v_live_debounce = tk.IntVar(value=cfg.get('live_preview_debounce_ms', 750))
+    v_live_debounce = tk.IntVar(value=cfg.get('live_preview_debounce_ms', 500))
 
     available_ocr = ocr.available_languages() or ['en-US', 'ru-RU']
     if cfg['ocr_lang'] not in available_ocr:

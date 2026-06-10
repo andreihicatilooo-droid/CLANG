@@ -21,7 +21,7 @@ DEFAULTS = {
 
     # Live preview during capture (Electron)
     'live_preview_enabled':     True,
-    'live_preview_debounce_ms': 750,
+    'live_preview_debounce_ms': 500,
 
     # Languages
     'ocr_lang':     'en-US',        # Windows OCR BCP-47 tag
@@ -29,7 +29,7 @@ DEFAULTS = {
     'target_lang':  'ru',
 
     # Engine (gemini_api = Google AI Studio API key)
-    'engine':       'google',       # google | local_nllb | gcp_local | gemini_api | gemini_oauth
+    'engine':       'google',       # google | local_nllb | gcp_local | gemini_api | gemini_oauth | nano_banana_pro
     'gemini_api_key': '',           # https://aistudio.google.com/apikey
     'gemini_model':   'gemini-2.5-flash-lite',
     'gemini_model_auto': True,
@@ -49,6 +49,10 @@ DEFAULTS = {
     'start_minimized':     True,
     'show_original':       False,
     'overlay_seamless':    False,
+
+    # Experimental
+    'experimental_enabled':       False,
+    'experimental_page_generate': True,
 }
 
 _lock = threading.Lock()
@@ -136,8 +140,12 @@ def _normalize(cfg):
     _normalize_hotkeys(data)
     _migrate_hotkey_modes(data)
     data['live_preview_enabled'] = bool(data.get('live_preview_enabled', True))
-    debounce = int(data.get('live_preview_debounce_ms', 750))
+    debounce = int(data.get('live_preview_debounce_ms', DEFAULTS['live_preview_debounce_ms']))
     data['live_preview_debounce_ms'] = max(300, min(2000, debounce))
+    data['experimental_enabled'] = bool(data.get('experimental_enabled', False))
+    data['experimental_page_generate'] = bool(data.get('experimental_page_generate', True))
+    if data.get('engine') == 'nano_banana_pro' and not data['experimental_enabled']:
+        data['engine'] = 'google'
     return data
 
 

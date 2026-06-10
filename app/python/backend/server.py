@@ -155,13 +155,16 @@ def main():
 
     from app import config
     cfg = config.load()
-    if cfg.get('engine') == 'local_nllb':
-        try:
-            from app import nllb_local
+    try:
+        from app import nllb_local
+        should_warm = cfg.get('engine') == 'local_nllb'
+        if not should_warm and cfg.get('live_preview_enabled'):
+            should_warm = nllb_local.status().get('downloaded', False)
+        if should_warm:
             nllb_local.warmup(async_=True)
             print('[backend] warming up local NLLB model…', flush=True)
-        except Exception:
-            pass
+    except Exception:
+        pass
 
     httpd = ThreadingHTTPServer((HOST, port), JsonRpcHandler)
     _httpd = httpd

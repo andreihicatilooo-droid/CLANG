@@ -16,7 +16,7 @@ export default function CaptureScreen() {
   const livePreviewEnabled = searchParams.get('lp') !== '0'
   const livePreviewDebounceMs = Math.min(
     2000,
-    Math.max(300, Number(searchParams.get('lpd') ?? 750))
+    Math.max(300, Number(searchParams.get('lpd') ?? 500))
   )
   const [startPos, setStartPos] = useState<{ x: number; y: number } | null>(null)
   const [currentPos, setCurrentPos] = useState<{ x: number; y: number } | null>(null)
@@ -145,7 +145,7 @@ export default function CaptureScreen() {
     >
       {rect && (
         <div
-          className="capture-selection absolute border border-[#D1536D] bg-[#D1536D]/20 pointer-events-none overflow-hidden flex flex-col"
+          className="capture-selection absolute border border-[#D1536D] bg-[#D1536D]/20 pointer-events-none overflow-hidden"
           style={{
             left: rect.x,
             top: rect.y,
@@ -153,14 +153,18 @@ export default function CaptureScreen() {
             height: rect.height
           }}
         >
-          {livePreviewEnabled && preview?.loading && (
-            <div className="capture-preview-status capture-preview-loading">Перевод…</div>
-          )}
-          {livePreviewEnabled && !preview?.loading && preview?.error && (
-            <div className="capture-preview-status capture-preview-error">{preview.error}</div>
-          )}
-          {livePreviewEnabled && !preview?.loading && preview?.translated && !preview.error && (
-            <div className="capture-preview-text">{preview.translated}</div>
+          {livePreviewEnabled && (preview?.loading || preview?.error || preview?.translated) && (
+            <div className="capture-preview-panel absolute inset-0 flex flex-col overflow-hidden">
+              {preview?.loading && (
+                <div className="capture-preview-status capture-preview-loading shrink-0">Перевод…</div>
+              )}
+              {!preview?.loading && preview?.error && (
+                <div className="capture-preview-status capture-preview-error shrink-0">{preview.error}</div>
+              )}
+              {!preview?.loading && preview?.translated && !preview.error && (
+                <div className="capture-preview-text min-h-0 flex-1">{preview.translated}</div>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -172,4 +176,3 @@ export default function CaptureScreen() {
     </div>
   )
 }
-

@@ -20,6 +20,8 @@ export interface OverlayBlock {
   fontWeight?: number
   textShadow?: string
   imageUrl?: string
+  /** flow = top-aligned pre-wrap with scroll for large structured text */
+  layout?: 'flow' | 'center'
 }
 
 export interface OverlayStyle {
@@ -210,6 +212,34 @@ function adaptiveFontWeight(lightText: boolean, stats: RegionStats): number {
   return stats.decisionLuminance > 0.75 ? 700 : 600
 }
 
+const MIN_UNIFIED_CHARS = 40
+
+function bboxOfLines(lines: OcrLine[]): OcrLine {
+  const x = Math.min(...lines.map((l) => l.x))
+  const y = Math.min(...lines.map((l) => l.y))
+  const x2 = Math.max(...lines.map((l) => l.x + l.w))
+  const y2 = Math.max(...lines.map((l) => l.y + l.h))
+  return { text: '', x, y, w: x2 - x, h: y2 - y }
+}
+
+function shouldUseUnifiedBlock(lines: OcrLine[], translatedText: string): boolean {
+  if (lines.length === 0) return true
+  // Несколько строк OCR — всегда одна панель на всю выделенную область.
+  if (lines.length > 1) return true
+  if (translatedText.includes('\n')) return true
+  if (translatedText.length >= MIN_UNIFIED_CHARS) return true
+  return false
+}
+
+function fontSizeForFlowBlock(boxW: number, text: string, style: OverlayStyle): number {
+  const lineCount = Math.max(1, text.split('\n').length)
+  const avgChars = text.length / lineCount
+  let size = style.fontSize
+  const byWidth = Math.floor((boxW - 20) / Math.max(avgChars * 0.48, 10))
+  if (byWidth > 0 && byWidth < size) size = byWidth
+  return Math.max(10, Math.min(20, size))
+}
+
 /** Map Windows OCR line height (px) to CSS/PIL font size. */
 export function fontSizeFromOcrLine(
   ocrHeightPx: number,
@@ -252,11 +282,16 @@ function buildAdaptiveBlock(
   sampleW: number,
   sampleH: number,
   ocrHeightPx: number,
-  style: OverlayStyle
+  style: OverlayStyle,
+  layout: 'flow' | 'center' = 'center'
 ): OverlayBlock {
   const stats = sampleRegionStats(image, sampleX, sampleY, sampleW, sampleH)
   const colors = readableTextColors(stats)
   const lineCount = Math.max(1, text.split('\n').filter(Boolean).length)
+  const fontSize =
+    layout === 'flow'
+      ? fontSizeForFlowBlock(w, text, style)
+      : fitFontSize(text, ocrHeightPx, w, lineCount, style)
 
   return {
     x,
@@ -266,9 +301,10 @@ function buildAdaptiveBlock(
     text,
     bgColor: adaptiveBgColor(stats, colors.light, style.alpha),
     textColor: colors.text,
-    fontSize: fitFontSize(text, ocrHeightPx, w, lineCount, style),
+    fontSize,
     fontWeight: adaptiveFontWeight(colors.light, stats),
-    textShadow: adaptiveTextShadow(colors.light, stats)
+    textShadow: adaptiveTextShadow(colors.light, stats),
+    layout
   }
 }
 
@@ -276,58 +312,42 @@ export function buildOverlayBlocks(
   lines: OcrLine[],
   translatedText: string,
   image: Jimp,
-  style: OverlayStyle = DEFAULT_OVERLAY_STYLE
+  style: OverlayStyle = DEFAULT_OVERLAY_STYLE,
+  displayText?: string,
+  regionW?: number,
+  regionH?: number
 ): OverlayBlock[] {
   if (lines.length === 0) return []
 
-  const transLines = translatedText
-    .split('\n')
-    .map((s) => s.trim())
-    .filter(Boolean)
+  const text = displayText ?? translatedText
+  const rw = Math.max(1, regionW ?? bboxOfLines(lines).w)
+  const rh = Math.max(1, regionH ?? bboxOfLines(lines).h)
 
-  type Mapping = { line: OcrLine; text: string }
-
-  let mapping: Mapping[]
-
-  if (transLines.length === lines.length) {
-    mapping = lines.map((line, i) => ({ line, text: transLines[i] ?? '' }))
-  } else if (transLines.length === 1) {
-    const x = Math.min(...lines.map((l) => l.x))
-    const y = Math.min(...lines.map((l) => l.y))
-    const x2 = Math.max(...lines.map((l) => l.x + l.w))
-    const y2 = Math.max(...lines.map((l) => l.y + l.h))
-    mapping = [{ line: { text: '', x, y, w: x2 - x, h: y2 - y }, text: transLines[0] }]
-  } else {
-    mapping = lines.map((line, i) => ({
-      line,
-      text: transLines[i] ?? transLines.join(' ')
-    }))
+  if (shouldUseUnifiedBlock(lines, translatedText)) {
+    return buildFullRegionBlock(rw, rh, text, image, style)
   }
 
+  // Одна строка OCR — компактный блок поверх исходной строки.
+  const line = lines[0]
   const pad = 3
-
-  return mapping
-    .filter((m) => m.text)
-    .map(({ line, text }) => {
-      const bx = Math.max(0, line.x - pad)
-      const by = Math.max(0, line.y - pad)
-      const bw = line.w + pad * 2
-      const bh = line.h + pad * 2
-      return buildAdaptiveBlock(
-        bx,
-        by,
-        bw,
-        bh,
-        text,
-        image,
-        line.x,
-        line.y,
-        line.w,
-        line.h,
-        line.h,
-        style
-      )
-    })
+  const blockText = translatedText.trim() || text
+  return [
+    buildAdaptiveBlock(
+      Math.max(0, line.x - pad),
+      Math.max(0, line.y - pad),
+      line.w + pad * 2,
+      line.h + pad * 2,
+      blockText,
+      image,
+      line.x,
+      line.y,
+      line.w,
+      line.h,
+      line.h,
+      style,
+      blockText.includes('\n') ? 'flow' : 'center'
+    )
+  ]
 }
 
 export function buildFullRegionBlock(
@@ -350,7 +370,8 @@ export function buildFullRegionBlock(
       width,
       height,
       height,
-      style
+      style,
+      'flow'
     )
   ]
 }

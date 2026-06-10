@@ -5,7 +5,7 @@ import threading
 
 from PIL import Image
 
-from app import api_validation, config, gcp_validation, oauth, ocr, translators
+from app import api_validation, config, gcp_validation, oauth, ocr, page_generate, translators
 
 VERSION = '1.0.0'
 OAUTH_TIMEOUT_SEC = 120
@@ -129,10 +129,29 @@ def handle_validate_gcp_local(params):
     )
 
 
+_TEXT_ENGINES = frozenset({'google', 'local_nllb', 'gcp_local'})
+
+
+def handle_generate_translation_page(params):
+    original = params.get('original') or ''
+    translated = params.get('translated') or ''
+    if not translated.strip():
+        return {'error': 'translated text required'}
+    try:
+        html = page_generate.generate_html_page(original, translated)
+        return {'html': html, 'error': None}
+    except translators.TranslationError as e:
+        return {'error': str(e), 'html': None}
+    except Exception as e:
+        return {'error': f'Ошибка: {e}', 'html': None}
+
+
 def handle_translate_region(params):
     image_b64 = params.get('image_base64')
     if not image_b64:
         return {'error': 'image_base64 required'}
+
+    fast = bool(params.get('fast'))
 
     try:
         img = Image.open(io.BytesIO(base64.b64decode(image_b64)))
@@ -140,14 +159,29 @@ def handle_translate_region(params):
         return {'error': f'Invalid image: {e}'}
 
     ocr_lang = config.get('ocr_lang') or 'en-US'
+    engine = config.get('engine')
     lines = []
-    try:
-        lines = ocr.recognize_with_boxes(img, ocr_lang)
-    except Exception:
-        lines = []
+    precomputed_text = None
+
+    if fast:
+        if engine in _TEXT_ENGINES:
+            try:
+                precomputed_text = ocr.recognize(img, ocr_lang)
+            except Exception:
+                precomputed_text = ''
+    else:
+        try:
+            lines = ocr.recognize_with_boxes(img, ocr_lang)
+        except Exception:
+            lines = []
 
     try:
-        translated, original = translators.translate_image(img, lines=lines)
+        translated, original = translators.translate_image(
+            img,
+            lines=lines,
+            fast=fast,
+            precomputed_text=precomputed_text,
+        )
     except translators.TranslationError as e:
         return {'error': str(e), 'lines': lines}
     except Exception as e:
@@ -183,6 +217,7 @@ METHODS = {
     'save_config': handle_save_config,
     'get_ocr_languages': handle_get_ocr_languages,
     'translate_region': handle_translate_region,
+    'generate_translation_page': handle_generate_translation_page,
     'oauth_start': handle_oauth_start,
     'oauth_poll': handle_oauth_poll,
     'oauth_status': handle_oauth_status,

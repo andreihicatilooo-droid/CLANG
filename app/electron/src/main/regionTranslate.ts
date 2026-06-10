@@ -24,7 +24,13 @@ export function makeRegionKey(x: number, y: number, w: number, h: number): strin
   return `${Math.round(x)}:${Math.round(y)}:${Math.round(w)}:${Math.round(h)}`
 }
 
-export async function processCapturedRegion(captured: CapturedRegion): Promise<ProcessedCapture> {
+const FAST_MAX_DIM = 1280
+const FAST_JPEG_QUALITY = 82
+
+export async function processCapturedRegion(
+  captured: CapturedRegion,
+  options?: { fast?: boolean }
+): Promise<ProcessedCapture> {
   const { imageBuffer, cropX, cropY, cropW, cropH, scaleFactor } = captured
   const image = await Jimp.read(imageBuffer)
 
@@ -32,7 +38,17 @@ export async function processCapturedRegion(captured: CapturedRegion): Promise<P
   const safeCropH = Math.max(1, Math.min(cropH, image.bitmap.height - cropY))
 
   image.crop(cropX, cropY, safeCropW, safeCropH)
-  const croppedBuffer = await image.getBufferAsync(Jimp.MIME_PNG)
+
+  if (options?.fast) {
+    const maxDim = Math.max(safeCropW, safeCropH)
+    if (maxDim > FAST_MAX_DIM) {
+      image.scale(FAST_MAX_DIM / maxDim)
+    }
+  }
+
+  const croppedBuffer = options?.fast
+    ? await image.quality(FAST_JPEG_QUALITY).getBufferAsync(Jimp.MIME_JPEG)
+    : await image.getBufferAsync(Jimp.MIME_PNG)
 
   return {
     imageBase64: croppedBuffer.toString('base64'),
@@ -73,7 +89,15 @@ export function blocksFromTranslateResult(
 
   let blocks =
     result.lines.length > 0
-      ? buildOverlayBlocks(result.lines, result.translated, image, overlayStyle)
+      ? buildOverlayBlocks(
+        result.lines,
+        result.translated,
+        image,
+        overlayStyle,
+        displayText,
+        safeCropW,
+        safeCropH
+      )
       : buildFullRegionBlock(safeCropW, safeCropH, displayText, image, overlayStyle)
 
   return scaleBlocksToDip(blocks, scaleFactor)

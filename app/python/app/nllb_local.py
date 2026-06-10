@@ -104,7 +104,7 @@ def status():
     }
 
 
-def translate(text, source, target, ocr_lang=None):
+def translate(text, source, target, ocr_lang=None, fast=False):
     if not _ready:
         _load_sync()
     with _lock:
@@ -119,11 +119,17 @@ def translate(text, source, target, ocr_lang=None):
     tgt = resolve_target(target)
     tok.src_lang = src
     tokens = tok.convert_ids_to_tokens(tok.encode(text))
+    # Scale decode budget with chunk size; cap to avoid runaway latency.
+    est = max(len(text.split()), len(text) // 4)
+    if fast:
+        max_len = min(256, max(96, est + 32))
+    else:
+        max_len = min(512, max(128, est + 48))
     result = tr.translate_batch(
         [tokens],
         target_prefix=[[tgt]],
         beam_size=1,
-        max_decoding_length=256,
+        max_decoding_length=max_len,
     )[0]
     out_tokens = result.hypotheses[0]
     if tgt in out_tokens:

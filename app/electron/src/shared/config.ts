@@ -26,7 +26,13 @@ export interface ScreenTranslatorConfig {
   source_lang: string
   target_lang: string
 
-  engine: 'google' | 'local_nllb' | 'gcp_local' | 'gemini_api' | 'gemini_oauth'
+  engine:
+  | 'google'
+  | 'local_nllb'
+  | 'gcp_local'
+  | 'gemini_api'
+  | 'gemini_oauth'
+  | 'nano_banana_pro'
   gemini_api_key: string
   gemini_model: string
   gemini_model_auto: boolean
@@ -42,6 +48,9 @@ export interface ScreenTranslatorConfig {
   start_minimized: boolean
   show_original: boolean
   overlay_seamless: boolean
+
+  experimental_enabled: boolean
+  experimental_page_generate: boolean
 }
 
 const DEFAULT_HOTKEY: HotkeyBinding = {
@@ -65,7 +74,7 @@ export const CONFIG_DEFAULTS: ScreenTranslatorConfig = {
   ],
 
   live_preview_enabled: true,
-  live_preview_debounce_ms: 750,
+  live_preview_debounce_ms: 500,
 
   ocr_lang: 'en-US',
   source_lang: 'auto',
@@ -86,7 +95,10 @@ export const CONFIG_DEFAULTS: ScreenTranslatorConfig = {
   copy_to_clipboard: false,
   start_minimized: true,
   show_original: false,
-  overlay_seamless: false
+  overlay_seamless: false,
+
+  experimental_enabled: false,
+  experimental_page_generate: true
 }
 
 export const TARGET_LANGS: { label: string; code: string }[] = [
@@ -111,19 +123,36 @@ export const ENGINES: { id: ScreenTranslatorConfig['engine']; label: string; hin
     label: 'Локальный NLLB',
     hint: 'Самый быстрый: Windows OCR + NLLB на вашем ПК (~0.1–0.5 с)'
   },
-  { id: 'google', label: 'Google Translate', hint: 'Windows OCR + бесплатный перевод текста' },
+  {
+    id: 'google',
+    label: 'Google Translate',
+    hint: 'Windows OCR + бесплатный перевод. В live-режиме автоматически NLLB, если модель загружена'
+  },
   {
     id: 'gemini_api',
     label: 'Google AI Studio',
-    hint: 'Gemini Vision через API-ключ из aistudio.google.com'
+    hint: 'Gemini Vision (flash-lite). В live-режиме — JPEG и укороченный промпт'
   },
-  { id: 'gemini_oauth', label: 'Gemini · OAuth', hint: 'Вход через Google-аккаунт' },
+  { id: 'gemini_oauth', label: 'Gemini · OAuth', hint: 'Gemini Vision; в live — flash-lite и быстрый режим' },
   {
     id: 'gcp_local',
     label: 'GCP Local (NLLB)',
     hint: 'Быстрый перевод: Windows OCR → NLLB на Cloud Run'
   }
 ]
+
+export const EXPERIMENTAL_ENGINES: {
+  id: ScreenTranslatorConfig['engine']
+  label: string
+  hint: string
+}[] = [
+    {
+      id: 'nano_banana_pro',
+      label: 'Nano Banana Pro (эксп.)',
+      hint:
+        'Gemini 3 Pro Image: нейросеть перерисовывает выделенную область как переведённую страницу. Нужен API-ключ AI Studio'
+    }
+  ]
 
 export const GEMINI_MODELS = [
   'gemini-2.5-flash-lite',

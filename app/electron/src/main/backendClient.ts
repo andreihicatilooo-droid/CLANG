@@ -96,8 +96,21 @@ export async function getOcrLanguages(): Promise<string[]> {
   return res.languages
 }
 
-export async function translateRegion(imageBase64: string): Promise<TranslateRegionResult> {
-  return rpc<TranslateRegionResult>('translate_region', { image_base64: imageBase64 })
+export async function translateRegion(
+  imageBase64: string,
+  options?: { fast?: boolean }
+): Promise<TranslateRegionResult> {
+  return rpc<TranslateRegionResult>('translate_region', {
+    image_base64: imageBase64,
+    fast: options?.fast ?? false
+  })
+}
+
+export async function generateTranslationPage(
+  original: string,
+  translated: string
+): Promise<{ html: string | null; error: string | null }> {
+  return rpc('generate_translation_page', { original, translated })
 }
 
 export async function oauthStart(): Promise<{ started: boolean; message?: string }> {

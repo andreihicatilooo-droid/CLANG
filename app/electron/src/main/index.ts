@@ -19,6 +19,7 @@ import {
   getConfig,
   saveConfig,
   translateRegion,
+  generateTranslationPage,
   getOcrLanguages,
   oauthStart,
   oauthPoll,
@@ -44,6 +45,7 @@ let isQuitting = false
 let mainWindow: BrowserWindow | null = null
 let captureWindows: BrowserWindow[] = []
 let overlayWindow: BrowserWindow | null = null
+let translationPageWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let overlayCloseTimer: ReturnType<typeof setTimeout> | null = null
 let overlayPayload: { blocks: OverlayBlock[]; width: number; height: number } | null = null
@@ -55,6 +57,7 @@ let regionTranslateCache: {
   key: string
   result: TranslateRegionResult
   processed: Awaited<ReturnType<typeof processCapturedRegion>>
+  previewOnly?: boolean
 } | null = null
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock()
@@ -240,6 +243,43 @@ function closeOverlay(): void {
     const win = overlayWindow
     overlayWindow = null
     win.close()
+  }
+}
+
+function openTranslationPage(html: string): void {
+  if (translationPageWindow && !translationPageWindow.isDestroyed()) {
+    translationPageWindow.close()
+  }
+  const win = new BrowserWindow({
+    width: 960,
+    height: 720,
+    autoHideMenuBar: true,
+    title: 'Перевод — экспериментальная страница',
+    webPreferences: {
+      sandbox: true,
+      contextIsolation: true
+    }
+  })
+  translationPageWindow = win
+  win.on('closed', () => {
+    if (translationPageWindow === win) translationPageWindow = null
+  })
+  const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(html)}`
+  void win.loadURL(dataUrl)
+}
+
+async function maybeOpenTranslationPage(result: TranslateRegionResult): Promise<void> {
+  if (!appConfig.experimental_enabled || !appConfig.experimental_page_generate) return
+  if (appConfig.engine === 'nano_banana_pro') return
+  if (result.error || !result.translated || result.seamless_image_base64) return
+
+  try {
+    const page = await generateTranslationPage(result.original ?? '', result.translated)
+    if (page.html && !page.error) {
+      openTranslationPage(page.html)
+    }
+  } catch (err) {
+    console.error('[page-generate]', err)
   }
 }
 
@@ -429,17 +469,29 @@ if (gotSingleInstanceLock) {
 
       broadcastPreviewResult({ seq, loading: true })
 
+      if (appConfig.engine === 'nano_banana_pro') {
+        broadcastPreviewResult({
+          seq,
+          loading: false,
+          translated: 'Nano Banana Pro: отпустите выделение для генерации страницы',
+          original: null,
+          error: null
+        })
+        return
+      }
+
       try {
         const captured = await captureRegionHidden(region)
-        const processed = await processCapturedRegion(captured)
-        const result = await translateRegion(processed.imageBase64)
+        const processed = await processCapturedRegion(captured, { fast: true })
+        const result = await translateRegion(processed.imageBase64, { fast: true })
 
         if (requestId !== previewRequestId) return
 
         regionTranslateCache = {
           key: makeRegionKey(x, y, width, height),
           result,
-          processed
+          processed,
+          previewOnly: true
         }
 
         broadcastPreviewResult({
@@ -466,7 +518,10 @@ if (gotSingleInstanceLock) {
       const { globalX, globalY } = region
       const overlayStyle = overlayStyleFromConfig(appConfig)
       const regionKey = makeRegionKey(x, y, width, height)
-      const cached = regionTranslateCache?.key === regionKey ? regionTranslateCache : null
+      const cached =
+        regionTranslateCache?.key === regionKey && !regionTranslateCache.previewOnly
+          ? regionTranslateCache
+          : null
 
       await closeCaptureWindowAndWait()
       regionTranslateCache = null
@@ -509,6 +564,7 @@ if (gotSingleInstanceLock) {
         )
 
         replaceOverlayBlocks(blocks)
+        void maybeOpenTranslationPage(result)
       } catch (err) {
         console.error(err)
         replaceOverlayBlocks(

@@ -8,6 +8,7 @@ import {
   describeHotkeyMode,
   describeHotkeys,
   ENGINES,
+  EXPERIMENTAL_ENGINES,
   GEMINI_MODELS,
   getHotkeyBindings,
   syncLegacyHotkeyFields,
@@ -47,17 +48,26 @@ function configsEqual(a: ScreenTranslatorConfig, b: ScreenTranslatorConfig): boo
 function Md3Switch({
   checked,
   onChange,
-  label
+  label,
+  disabled = false
 }: {
   checked: boolean
   onChange: (value: boolean) => void
   label: string
+  disabled?: boolean
 }): React.JSX.Element {
   return (
-    <label className="flex items-center justify-between gap-4 cursor-pointer">
+    <label
+      className={`flex items-center justify-between gap-4 ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+    >
       <span className="text-sm text-md-on-surface">{label}</span>
       <span className="md3-switch">
-        <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+        <input
+          type="checkbox"
+          checked={checked}
+          disabled={disabled}
+          onChange={(e) => onChange(e.target.checked)}
+        />
         <span className="md3-switch-track">
           <span className="md3-switch-thumb" />
         </span>
@@ -310,6 +320,13 @@ export default function SettingsScreen(): React.JSX.Element {
     try {
       let configToSave = draft
 
+      if (draft.engine === 'nano_banana_pro') {
+        if (!draft.gemini_api_key.trim()) {
+          setSaveMessage({ type: 'error', text: 'Nano Banana Pro требует API-ключ Google AI Studio' })
+          return
+        }
+      }
+
       if (draft.engine === 'gemini_api') {
         if (!draft.gemini_api_key.trim()) {
           setSaveMessage({ type: 'error', text: 'Укажите API-ключ Google AI Studio' })
@@ -505,11 +522,19 @@ export default function SettingsScreen(): React.JSX.Element {
                         {e.label}
                       </option>
                     ))}
+                    {draft.experimental_enabled &&
+                      EXPERIMENTAL_ENGINES.map((e) => (
+                        <option key={e.id} value={e.id}>
+                          {e.label}
+                        </option>
+                      ))}
                   </select>
-                  <p className="md3-hint">{ENGINES.find((e) => e.id === draft.engine)?.hint}</p>
+                  <p className="md3-hint">
+                    {[...ENGINES, ...EXPERIMENTAL_ENGINES].find((e) => e.id === draft.engine)?.hint}
+                  </p>
                 </div>
 
-                {draft.engine === 'gemini_api' && (
+                {(draft.engine === 'gemini_api' || draft.engine === 'nano_banana_pro') && (
                   <div className="space-y-4">
                     <div>
                       <label className="md3-label">API-ключ Google AI Studio</label>
@@ -923,6 +948,33 @@ export default function SettingsScreen(): React.JSX.Element {
                   checked={draft.copy_to_clipboard}
                   onChange={(v) => updateDraft({ copy_to_clipboard: v })}
                 />
+
+                <hr className="md3-divider" />
+
+                <div className="flex items-center gap-2">
+                  <Sparkles size={16} className="text-md-primary" />
+                  <h3 className="text-sm font-medium text-md-on-surface">Экспериментально</h3>
+                </div>
+                <Md3Switch
+                  label="Включить экспериментальные функции"
+                  checked={draft.experimental_enabled}
+                  onChange={(v) =>
+                    updateDraft({
+                      experimental_enabled: v,
+                      ...(v ? {} : { engine: draft.engine === 'nano_banana_pro' ? 'google' : draft.engine })
+                    })
+                  }
+                />
+                <Md3Switch
+                  label="Генерировать HTML-страницу перевода (Gemini)"
+                  checked={draft.experimental_page_generate}
+                  onChange={(v) => updateDraft({ experimental_page_generate: v })}
+                  disabled={!draft.experimental_enabled}
+                />
+                <p className="md3-hint">
+                  Nano Banana Pro (gemini-3-pro-image) перерисовывает выделение как переведённую
+                  страницу-картинку. HTML-страница открывается отдельным окном для остальных движков.
+                </p>
 
                 <hr className="md3-divider" />
 
